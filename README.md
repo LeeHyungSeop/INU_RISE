@@ -21,13 +21,13 @@
 
 </br>
 
-- [ ] **`02_backbone_with_adaptivedepth_retinanet/`** : <
+- [ ] **`02_backbone_with_adaptivedepth_retinanet/`** : 
 </br>We will evaluate the performance by **applying the adaptive depth network to the RetinaNet backbone network**, which is resnet50_fpn.
-* Things to develop and modify.
-   * Train the backbone network (ResNet50-FPN) using skip-aware self-distillation.
-   * switchable BNs
-   * Add a skip argument to the forward function of the evaluation.
-   * Modify the lateral path of the FPN appropriately for the skipped network.
+   * Things to develop and modify.
+     * Train the backbone network (ResNet50-FPN) using skip-aware self-distillation.
+     * switchable BNs
+     * Add a skip argument to the forward function of the evaluation.
+     * Modify the lateral path of the FPN appropriately for the skipped network.
 
 </br>
 
