@@ -1,1 +1,11 @@
-*.pth
+checkpoint/
+pretrained/
+pretrained*/
+logs/
+exp/
+figures/
+__pycache__/
+*.swp
+*.pdf
+log.*
+RISE/
