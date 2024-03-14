@@ -19,6 +19,7 @@
    A result of pytorch reference model(resnet50_fpn_retinanet) trained on COCO dataset.
    ![nomsg](./images/01_reference_resnet50_fpn_retinanet_result.png)
 
+</br>
 
 - [ ] **`02_backbone_with_adaptivedepth_retinanet/`** : 
 </br>
@@ -29,7 +30,8 @@ We will evaluate the performance by **applying the adaptive depth network to the
    * Add a skip argument to the forward function of the evaluation.
    * Modify the lateral path of the FPN appropriately for the skipped network.
 
-- [ ] 
-**`03_?(Not yet planned)?/` :**
 </br>
+
+- [ ] 
+**`03_?(Not yet planned)?/` :**</br>
 Developing a new technique to improve performance while reducing the size of the RetinaNet model, achieving either the same performance with increased speed or a slight decrease in speed with performance enhancement.
