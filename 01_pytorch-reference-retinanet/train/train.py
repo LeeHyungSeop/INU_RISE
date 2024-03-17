@@ -1,4 +1,5 @@
-r"""PyTorch Detection Training.
+
+"""PyTorch Detection Training.
 
 To run in a multi-gpu environment, use the distributed launcher::
 
@@ -18,22 +19,21 @@ Because the number of images is smaller in the person keypoint subset of COCO,
 the number of epochs should be adapted so that we have the same number of iterations.
 """
 import datetime
-import os
 import time
-import sys
-sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
-
-import presets
 import torch
 import torch.utils.data
 import torchvision
 import torchvision.models.detection
 import torchvision.models.detection.mask_rcnn
+from torchvision.transforms import InterpolationMode
+import os,sys
+os.environ["OMP_NUM_THREADS"] = '8'
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import presets
 import utils
 from coco_utils import get_coco
 from engine import evaluate, train_one_epoch
 from group_by_aspect_ratio import create_aspect_ratio_groups, GroupedBatchSampler
-from torchvision.transforms import InterpolationMode
 from transforms import SimpleCopyPaste
 
 
