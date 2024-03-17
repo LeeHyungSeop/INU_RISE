@@ -4,6 +4,19 @@
 
 </br>
 
+## HW & SW Environment
+
+* All experiments are conducted using identical hardware and software resources.
+   * **HW** : 
+     * **GPU** : NVIDIA GeForce RTX 4090 * 4
+   * **SW** :
+      * **Ubuntu** : 22.04
+      * **python** : 3.11.7
+      * **cuda** : 12.1
+      * **pytorch** : 2.2.1
+
+</br>
+
 ## Plan & Description of the Project
 - [X] The key papers that have influenced the topic selection are as follows.
    * [He, Kaiming, et al. "Deep residual learning for image recognition." Proceedings of the IEEE conference on computer vision and pattern recognition. 2016.](https://arxiv.org/abs/1512.03385)
