@@ -44,13 +44,13 @@
      * Add a skip argument to the forward function of the evaluation.
      * Modify the lateral path of the FPN appropriately for the skipped network.
    * **ResNet50-ADN training result(model_145.pth) :** 
-      | Model name                | Acc@1  | Acc@5 |  FLOPs   |          |
-      | ------------------------- |------------- | ----------- | -------- | ------- |
+      | Model name                | Acc@1  | Acc@5 |  FLOPs   |
+      | ------------------------- |------------- | ----------- | -------- |
       | ResNet50-ADN (super-net) |     75.446%   |   92.896%     |   4.11G  |
       | ResNet50-ADN (base-net)   |     76.91%   |   93.44%     |   2.58G  |    
 
    * **RetinaNet with ResNet50-ADN backbone :**
-   
+
 
 </br>
 
