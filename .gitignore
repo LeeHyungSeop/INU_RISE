@@ -10,3 +10,4 @@ __pycache__/
 log.*
 AdaptiveDepthNetwork/
 *.pth
+02_AdaptiveDepthNetwork/*

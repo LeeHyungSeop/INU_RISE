@@ -25,10 +25,10 @@
    * [Kang, Woochul. "Adaptive Depth Networks with Skippable Sub-Paths." arXiv preprint arXiv:2312.16392 (2023).](https://arxiv.org/abs/2312.16392)
 
 
-- [X] **`01_pytorch_references_retinanet/`** : 
-</br>I will use **RetinaNet for base** detector, which has good accessibility for research and development.
+- [X] **`01_PyTorch_RetinaNet/`** : 
+</br>I will use RetinaNet for base detector, which has good accessibility for research and development.
 </br>([PyTorch provides the reference model RetinaNet for research purposes](https://github.com/pytorch/vision/blob/main/torchvision/models/detection/retinanet.py), making code management easy and convenient.)
-   * `./custom_eval_from_train/eval_log.txt` : </br>
+   * **./custom_eval_from_train/eval_log.txt** : </br>
    A result of pytorch reference model(resnet50_fpn_retinanet) trained on COCO dataset.
    ![](/images/01_reference_resnet50_fpn_retinanet_result.png)
    
@@ -36,8 +36,8 @@
 
 </br>
 
-- [ ] **`02_backbone_with_adaptivedepth_retinanet/`** : 
-</br>We will evaluate the performance by **applying the adaptive depth network to the RetinaNet backbone network**, which is resnet50_fpn.
+- [X] **`02_AdaptiveDepthNetwork/`** : 
+</br>We will evaluate the performance by applying the adaptive depth network to the RetinaNet backbone network, which is resnet50_fpn.
    * **Things to develop and modify :**
      * Train the backbone network (ResNet50-FPN) using skip-aware self-distillation.
      * switchable BNs
@@ -49,11 +49,11 @@
       | ResNet50-ADN (super-net) |     75.446%   |   92.896%     |   4.11G  |
       | ResNet50-ADN (base-net)   |     76.91%   |   93.44%     |   2.58G  |    
 
-   * **RetinaNet with ResNet50-ADN backbone :**
-
+- [ ] **`03_RetinaNet_with_ResNet50-ADN_backbone/`** :
+</br>Replace the backbone of RetinaNet in "01_PyTorch_RetinaNet/" with ResNet50-ADN (base-net) from "02_AdaptiveDepthNetwork/".
 
 </br>
 
 - [ ] 
-**`03_?(Not yet planned)?/` :**</br>
+**`04_?(Not yet planned)?/` :**</br>
 Developing a new technique to improve performance while reducing the size of the RetinaNet model, achieving either the same performance with increased speed or a slight decrease in speed with performance enhancement.
