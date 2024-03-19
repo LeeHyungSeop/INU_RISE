@@ -38,11 +38,19 @@
 
 - [ ] **`02_backbone_with_adaptivedepth_retinanet/`** : 
 </br>We will evaluate the performance by **applying the adaptive depth network to the RetinaNet backbone network**, which is resnet50_fpn.
-   * Things to develop and modify.
+   * **Things to develop and modify :**
      * Train the backbone network (ResNet50-FPN) using skip-aware self-distillation.
      * switchable BNs
      * Add a skip argument to the forward function of the evaluation.
      * Modify the lateral path of the FPN appropriately for the skipped network.
+   * **ResNet50-ADN training result(model_145.pth) :** 
+      | Model name                | Acc@1  | Acc@5 |  FLOPs   |          |
+      | ------------------------- |------------- | ----------- | -------- | ------- |
+      | ResNet50-ADN (super-net) |     75.446%   |   92.896%     |   4.11G  |
+      | ResNet50-ADN (base-net)   |     76.91%   |   93.44%     |   2.58G  |    
+
+   * **RetinaNet with ResNet50-ADN backbone :**
+   
 
 </br>
 
