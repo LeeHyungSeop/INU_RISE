@@ -1,0 +1,33 @@
+loading annotations into memory...
+Done (t=0.32s)
+creating index...
+index created!
+/home/hslee/anaconda3/lib/python3.11/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+  warnings.warn(
+/home/hslee/anaconda3/lib/python3.11/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=None`.
+  warnings.warn(msg)
+Test:  [  0/625]  eta: 0:12:13  model_time: 0.6851 (0.6851)  evaluator_time: 0.0301 (0.0301)  time: 1.1729  data: 0.4524  max mem: 3628
+Test:  [100/625]  eta: 0:02:22  model_time: 0.2086 (0.2141)  evaluator_time: 0.0305 (0.0365)  time: 0.2652  data: 0.0093  max mem: 4335
+Test:  [200/625]  eta: 0:01:52  model_time: 0.2085 (0.2110)  evaluator_time: 0.0311 (0.0376)  time: 0.2692  data: 0.0086  max mem: 4335
+Test:  [300/625]  eta: 0:01:25  model_time: 0.2095 (0.2091)  evaluator_time: 0.0261 (0.0373)  time: 0.2475  data: 0.0080  max mem: 4335
+Test:  [400/625]  eta: 0:00:58  model_time: 0.2094 (0.2085)  evaluator_time: 0.0281 (0.0378)  time: 0.2665  data: 0.0083  max mem: 4335
+Test:  [500/625]  eta: 0:00:32  model_time: 0.1993 (0.2075)  evaluator_time: 0.0272 (0.0378)  time: 0.2569  data: 0.0085  max mem: 4335
+Test:  [600/625]  eta: 0:00:06  model_time: 0.2079 (0.2065)  evaluator_time: 0.0287 (0.0380)  time: 0.2596  data: 0.0086  max mem: 4336
+Test:  [624/625]  eta: 0:00:00  model_time: 0.2088 (0.2065)  evaluator_time: 0.0284 (0.0376)  time: 0.2524  data: 0.0083  max mem: 4336
+Test: Total time: 0:02:41 (0.2587 s / it)
+Averaged stats: model_time: 0.2088 (0.2065)  evaluator_time: 0.0284 (0.0376)
+Accumulating evaluation results...
+DONE (t=5.47s).
+IoU metric: bbox
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.359
+ Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=100 ] = 0.554
+ Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets=100 ] = 0.382
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = 0.193
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.402
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.474
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=  1 ] = 0.308
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets= 10 ] = 0.495
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.534
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = 0.334
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.581
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.674
