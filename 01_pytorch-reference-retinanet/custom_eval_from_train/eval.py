@@ -47,7 +47,7 @@ def get_dataset(is_train, args):
     num_classes, mode = {"coco": (91, "instances"), "coco_kp": (2, "person_keypoints")}[args.dataset]
     with_masks = "mask" in args.model
     ds = get_coco(
-        root="/home/hslee/Desktop/Datasets/COCO",
+        root="/media/data/coco",
         image_set=image_set,
         transforms=get_transform(is_train, args),
         mode=mode,
@@ -63,16 +63,16 @@ def get_args_parser(add_help=True):
         type=str,
         help="dataset name. Use coco for object detection and instance segmentation and coco_kp for Keypoint detection",
     )
-    parser.add_argument('--nproc_per_node', default=1, type=int, help='number of process per node')
-    parser.add_argument('--data-path', default='/home/hslee/Desktop/Datasets/COCO', help='path to dataset')
+    parser.add_argument('--nproc_per_node', default=4, type=int, help='number of process per node')
+    parser.add_argument('--data-path', default='/media/data/coco', help='path to dataset')
     parser.add_argument("--test-only", dest="test_only", help="Only test the model", action="store_true")
     parser.add_argument("--model", default="retinanet_resnet50_fpn", type=str, help="model name")
     parser.add_argument("--device", default="cuda", type=str, help="device (Use cuda or cpu Default: cuda)")
     parser.add_argument(
         "-b", "--batch-size", default=2, type=int, help="images per gpu, the total batch size is $NGPU x batch_size"
     )
-    parser.add_argument("--weights", default='/home/hslee/Desktop/Embedded_AI/INU_4-1/RISE/01_pytorch-reference-retinanet/model_25.pth', type=str, help="the weights enum name to load")
-    parser.add_argument('--weights-path', default='/home/hslee/Desktop/Embedded_AI/INU_4-1/RISE/01_pytorch-reference-retinanet/model_25.pth', help='path to weights file')
+    parser.add_argument("--weights", default='/home/hslee/INU_RISE/01_pytorch-reference-retinanet/train/model_25.pth', type=str, help="the weights enum name to load")
+    parser.add_argument('--weights-path', default='/home/hslee/INU_RISE/01_pytorch-reference-retinanet/train/model_25.pth', help='path to weights file')
 
     parser.add_argument("--backend", default="PIL", type=str.lower, help="PIL or tensor - case insensitive")
     parser.add_argument("--use-v2", action="store_true", help="Use V2 transforms")
@@ -106,5 +106,5 @@ if __name__ == "__main__":
     
     
 '''
-python3 eval.py --data-path=/home/hslee/Desktop/Datasets/COCO --batch-size 8  --test-only 2>&1 | tee ./eval_log.txt
+torchrun eval.py --nproc_per_node=4 --data-path /media/data/coco --batch-size 2  --test-only 2>&1 | tee ./eval_log.txt
 '''    

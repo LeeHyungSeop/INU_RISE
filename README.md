@@ -4,7 +4,7 @@
 
 </br>
 
-## HW & SW Environment
+# Requirements
 
 * All experiments are conducted using identical hardware and software resources.
    * **HW** : 
@@ -30,8 +30,9 @@
 </br>([PyTorch provides the reference model RetinaNet for research purposes](https://github.com/pytorch/vision/blob/main/torchvision/models/detection/retinanet.py), making code management easy and convenient.)
    * `./custom_eval_from_train/eval_log.txt` : </br>
    A result of pytorch reference model(resnet50_fpn_retinanet) trained on COCO dataset.
-   * result is the same with torch result(36.4)
-   ![nomsg](./images/01_reference_resnet50_fpn_retinanet_result.png)
+   ![](/images/01_reference_resnet50_fpn_retinanet_result.png)
+   
+
 
 </br>
 
