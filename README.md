@@ -47,7 +47,7 @@
       | Model name                | Acc@1  | Acc@5 |  FLOPs   |
       | ------------------------- |------------- | ----------- | -------- |
       | ResNet50-ADN (super-net) |     75.446%   |   92.896%     |   4.11G  |
-      | ResNet50-ADN (base-net)   |     76.91%   |   93.44%     |   2.58G  |    
+      | ResNet50-ADN (base-net)   |     76.914%   |   93.438%     |   2.58G  |    
 
 - [ ] **`03_RetinaNet_with_ResNet50-ADN_backbone/`** :
 </br>Replace the backbone of RetinaNet in "01_PyTorch_RetinaNet/" with ResNet50-ADN (base-net) from "02_AdaptiveDepthNetwork/".

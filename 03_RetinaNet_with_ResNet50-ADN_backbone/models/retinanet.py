@@ -365,6 +365,7 @@ class RetinaNet(nn.Module):
         # 2024.03.20 @hslee
         self.backbone = backbone
         self.num_skippable_stages = num_skippable_stages
+        self.skip = None
 
         if not isinstance(anchor_generator, (AnchorGenerator, type(None))):
             raise TypeError(
@@ -490,8 +491,8 @@ class RetinaNet(nn.Module):
 
         return detections
 
-    def forward(self, images, targets=None):
-        # type: (List[Tensor], Optional[List[Dict[str, Tensor]]]) -> Tuple[Dict[str, Tensor], List[Dict[str, Tensor]]]
+    # 2024.03.20 @hslee (add skip=None)
+    def forward(self, images, targets=None, skip=None):
         if self.training:
             if targets is None:
                 torch._assert(False, "targets should not be none when in training mode")
@@ -534,7 +535,7 @@ class RetinaNet(nn.Module):
                     )
 
         # get the features from the backbone
-        features = self.backbone(images.tensors)
+        features = self.backbone(images.tensors, skip=skip)
         if isinstance(features, torch.Tensor):
             features = OrderedDict([("0", features)])
 
@@ -643,7 +644,7 @@ def retinanet_resnet50_adn_fpn(
 
     # 2024.03.20 @hslee
     weights = RetinaNet_ResNet50_FPN_Weights.verify(weights)
-    weights_backbone = torch.load('/home/hslee/INU_RISE/02_AdaptiveDepthNetwork/checkpoint/model_145.pth')
+    weights_backbone = torch.load('/home/hslee/INU_RISE/02_AdaptiveDepthNetwork/pretrained/')
 
     if weights is not None:
         weights_backbone = None

@@ -29,7 +29,7 @@ import torchvision
 import utils
 from torch import nn
 from coco_utils import get_coco
-from engine import evaluate
+from engine import evaluate, train_one_epoch, train_one_epoch_twobackward
 from group_by_aspect_ratio import create_aspect_ratio_groups, GroupedBatchSampler
 from torchvision.transforms import InterpolationMode
 from transforms import SimpleCopyPaste
@@ -133,6 +133,7 @@ def get_args_parser(add_help=True):
         "--label-smoothing", default=0.0, type=float, help="label smoothing (default: 0.0)", dest="label_smoothing"
     )
     parser.add_argument("--print-freq", default=20, type=int, help="print frequency")
+    parser.add_argument("--subpath-alpha", default=0.5, type=float, help="sub-paths distillation alpha (default: 0.5)")
     parser.add_argument("--output-dir", default=".", type=str, help="path to save outputs")
     parser.add_argument("--resume", default="", type=str, help="path of checkpoint")
     parser.add_argument("--start_epoch", default=0, type=int, help="start epoch")
@@ -182,57 +183,6 @@ def get_args_parser(add_help=True):
 
     return parser
 
-
-def train_one_epoch_twobackward(model, optimizer, data_loader, device, epoch, print_freq, scaler=None):
-    model.train()
-    metric_logger = utils.MetricLogger(delimiter="  ")
-    metric_logger.add_meter("lr", utils.SmoothedValue(window_size=1, fmt="{value:.6f}"))
-    header = f"Epoch: [{epoch}]"
-
-    lr_scheduler = None
-    if epoch == 0:
-        warmup_factor = 1.0 / 1000
-        warmup_iters = min(1000, len(data_loader) - 1)
-
-        lr_scheduler = torch.optim.lr_scheduler.LinearLR(
-            optimizer, start_factor=warmup_factor, total_iters=warmup_iters
-        )
-
-    for images, targets in metric_logger.log_every(data_loader, print_freq, header):
-        images = list(image.to(device) for image in images)
-        targets = [{k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in t.items()} for t in targets]
-        with torch.cuda.amp.autocast(enabled=scaler is not None):
-            loss_dict = model(images, targets)
-            losses = sum(loss for loss in loss_dict.values())
-
-        # reduce losses over all GPUs for logging purposes
-        loss_dict_reduced = utils.reduce_dict(loss_dict)
-        losses_reduced = sum(loss for loss in loss_dict_reduced.values())
-
-        loss_value = losses_reduced.item()
-
-        if not math.isfinite(loss_value):
-            print(f"Loss is {loss_value}, stopping training")
-            print(loss_dict_reduced)
-            sys.exit(1)
-
-        optimizer.zero_grad()
-        if scaler is not None:
-            scaler.scale(losses).backward()
-            scaler.step(optimizer)
-            scaler.update()
-        else:
-            losses.backward()
-            optimizer.step()
-
-        if lr_scheduler is not None:
-            lr_scheduler.step()
-
-        metric_logger.update(loss=losses_reduced, **loss_dict_reduced)
-        metric_logger.update(lr=optimizer.param_groups[0]["lr"])
-
-    return metric_logger
-    
 
 def main(args):
     if args.backend.lower() == "tv_tensor" and not args.use_v2:
@@ -393,11 +343,11 @@ def main(args):
     
         # 2024.03.20 @hslee
         # train_one_epoch(model, optimizer, data_loader, device, epoch, args.print_freq, scaler)
-        
-        train_one_epoch_twobackward(model, optimizer, data_loader, device, epoch, print_freq=100, scaler=None)
+        train_one_epoch_twobackward(model, criterion, criterion_kd, optimizer, data_loader, device, epoch, args, scaler, skip_cfg_basenet, skip_cfg_supernet, subpath_alpha=args.subpath_alpha)
         
         lr_scheduler.step()
         
+        # evaluate after every epoch
         evaluate(model, criterion, data_loader_test, device=device, skip=skip_cfg_basenet)
         evaluate(model, criterion, data_loader_test, device=device, skip=skip_cfg_supernet)
         
@@ -414,9 +364,6 @@ def main(args):
             utils.save_on_master(checkpoint, os.path.join(args.output_dir, f"model_{epoch}.pth"))
             utils.save_on_master(checkpoint, os.path.join(args.output_dir, "checkpoint.pth"))
 
-        # evaluate after every epoch
-        evaluate(model, data_loader_test, device=device)
-
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print(f"Training time {total_time_str}")
@@ -428,9 +375,11 @@ if __name__ == "__main__":
 
 
 '''
-    torchrun --nproc_per_node=4 train_custom.py \
-    --dataset coco --data-path=/media/data/coco  \
-    --model retinanet_resnet50_adn_fpn --epochs 26 --batch-size 4 --workers 8  \
-    --lr-steps 16 22 --aspect-ratio-group-factor 3 --lr 0.01 --weights-backbone /home/hslee/INU_RISE/02_AdaptiveDepthNetwork/checkpoint/model_145.pth \
-    2>&1 | tee ./train/train_log.txt
+    torchrun --nproc_per_node=4 train_custom.py \ 
+    --dataset coco --data-path=/media/data/coco \
+    --model retinanet_resnet50_adn_fpn --epochs 26 \
+    --batch-size 4 --workers 8 --lr-steps 16 22 \
+    --aspect-ratio-group-factor 3 --lr 0.01 \
+    --weights-backbone /home/hslee/INU_RISE/02_AdaptiveDepthNetwork/pretrained/resnet50_adn_model_145.pth \
+    2>&1 | tee ./logs/log_train_custom.txt
 '''
