@@ -13,7 +13,11 @@ from torchvision.transforms._presets import ObjectDetection
 from torchvision.utils import _log_api_usage_once
 from torchvision.models._api import register_model, Weights, WeightsEnum
 from torchvision.models._meta import _COCO_CATEGORIES
-from torchvision.models.resnet import resnet50, ResNet50_Weights
+# from torchvision.models.resnet import resnet50, ResNet50_Weights
+
+from .resnet import resnet50
+from ._utils import _ovewrite_named_param
+
 from torchvision.models.detection import _utils as det_utils
 from torchvision.models.detection._utils import _box_loss, overwrite_eps
 from torchvision.models.detection.anchor_utils import AnchorGenerator
@@ -320,89 +324,6 @@ class RetinaNetRegressionHead(nn.Module):
 
 
 class RetinaNet(nn.Module):
-    """
-    Implements RetinaNet.
-
-    The input to the model is expected to be a list of tensors, each of shape [C, H, W], one for each
-    image, and should be in 0-1 range. Different images can have different sizes.
-
-    The behavior of the model changes depending on if it is in training or evaluation mode.
-
-    During training, the model expects both the input tensors and targets (list of dictionary),
-    containing:
-        - boxes (``FloatTensor[N, 4]``): the ground-truth boxes in ``[x1, y1, x2, y2]`` format, with
-          ``0 <= x1 < x2 <= W`` and ``0 <= y1 < y2 <= H``.
-        - labels (Int64Tensor[N]): the class label for each ground-truth box
-
-    The model returns a Dict[Tensor] during training, containing the classification and regression
-    losses.
-
-    During inference, the model requires only the input tensors, and returns the post-processed
-    predictions as a List[Dict[Tensor]], one for each input image. The fields of the Dict are as
-    follows:
-        - boxes (``FloatTensor[N, 4]``): the predicted boxes in ``[x1, y1, x2, y2]`` format, with
-          ``0 <= x1 < x2 <= W`` and ``0 <= y1 < y2 <= H``.
-        - labels (Int64Tensor[N]): the predicted labels for each image
-        - scores (Tensor[N]): the scores for each prediction
-
-    Args:
-        backbone (nn.Module): the network used to compute the features for the model.
-            It should contain an out_channels attribute, which indicates the number of output
-            channels that each feature map has (and it should be the same for all feature maps).
-            The backbone should return a single Tensor or an OrderedDict[Tensor].
-        num_classes (int): number of output classes of the model (including the background).
-        min_size (int): minimum size of the image to be rescaled before feeding it to the backbone
-        max_size (int): maximum size of the image to be rescaled before feeding it to the backbone
-        image_mean (Tuple[float, float, float]): mean values used for input normalization.
-            They are generally the mean values of the dataset on which the backbone has been trained
-            on
-        image_std (Tuple[float, float, float]): std values used for input normalization.
-            They are generally the std values of the dataset on which the backbone has been trained on
-        anchor_generator (AnchorGenerator): module that generates the anchors for a set of feature
-            maps.
-        head (nn.Module): Module run on top of the feature pyramid.
-            Defaults to a module containing a classification and regression module.
-        score_thresh (float): Score threshold used for postprocessing the detections.
-        nms_thresh (float): NMS threshold used for postprocessing the detections.
-        detections_per_img (int): Number of best detections to keep after NMS.
-        fg_iou_thresh (float): minimum IoU between the anchor and the GT box so that they can be
-            considered as positive during training.
-        bg_iou_thresh (float): maximum IoU between the anchor and the GT box so that they can be
-            considered as negative during training.
-        topk_candidates (int): Number of best detections to keep before NMS.
-
-    Example:
-
-        >>> import torch
-        >>> import torchvision
-        >>> from torchvision.models.detection import RetinaNet
-        >>> from torchvision.models.detection.anchor_utils import AnchorGenerator
-        >>> # load a pre-trained model for classification and return
-        >>> # only the features
-        >>> backbone = torchvision.models.mobilenet_v2(weights=MobileNet_V2_Weights.DEFAULT).features
-        >>> # RetinaNet needs to know the number of
-        >>> # output channels in a backbone. For mobilenet_v2, it's 1280,
-        >>> # so we need to add it here
-        >>> backbone.out_channels = 1280
-        >>>
-        >>> # let's make the network generate 5 x 3 anchors per spatial
-        >>> # location, with 5 different sizes and 3 different aspect
-        >>> # ratios. We have a Tuple[Tuple[int]] because each feature
-        >>> # map could potentially have different sizes and
-        >>> # aspect ratios
-        >>> anchor_generator = AnchorGenerator(
-        >>>     sizes=((32, 64, 128, 256, 512),),
-        >>>     aspect_ratios=((0.5, 1.0, 2.0),)
-        >>> )
-        >>>
-        >>> # put the pieces together inside a RetinaNet model
-        >>> model = RetinaNet(backbone,
-        >>>                   num_classes=2,
-        >>>                   anchor_generator=anchor_generator)
-        >>> model.eval()
-        >>> x = [torch.rand(3, 300, 400), torch.rand(3, 500, 400)]
-        >>> predictions = model(x)
-    """
 
     __annotations__ = {
         "box_coder": det_utils.BoxCoder,
@@ -428,6 +349,7 @@ class RetinaNet(nn.Module):
         fg_iou_thresh=0.5,
         bg_iou_thresh=0.4,
         topk_candidates=1000,
+        num_skippable_stages=None,
         **kwargs,
     ):
         super().__init__()
@@ -439,7 +361,10 @@ class RetinaNet(nn.Module):
                 "specifying the number of output channels (assumed to be the "
                 "same for all the levels)"
             )
+            
+        # 2024.03.20 @hslee
         self.backbone = backbone
+        self.num_skippable_stages = num_skippable_stages
 
         if not isinstance(anchor_generator, (AnchorGenerator, type(None))):
             raise TypeError(
@@ -567,18 +492,6 @@ class RetinaNet(nn.Module):
 
     def forward(self, images, targets=None):
         # type: (List[Tensor], Optional[List[Dict[str, Tensor]]]) -> Tuple[Dict[str, Tensor], List[Dict[str, Tensor]]]
-        """
-        Args:
-            images (list[Tensor]): images to be processed
-            targets (list[Dict[Tensor]]): ground-truth boxes present in the image (optional)
-
-        Returns:
-            result (list[BoxList] or dict[Tensor]): the output from the model.
-                During training, it returns a dict[Tensor] which contains the losses.
-                During testing, it returns list[BoxList] contains additional fields
-                like `scores`, `labels` and `mask` (for Mask R-CNN models).
-
-        """
         if self.training:
             if targets is None:
                 torch._assert(False, "targets should not be none when in training mode")
@@ -718,83 +631,19 @@ class RetinaNet_ResNet50_FPN_V2_Weights(WeightsEnum):
     DEFAULT = COCO_V1
 
 
-@register_model()
-@handle_legacy_interface(
-    weights=("pretrained", RetinaNet_ResNet50_FPN_Weights.COCO_V1),
-    weights_backbone=("pretrained_backbone", ResNet50_Weights.IMAGENET1K_V1),
-)
-def retinanet_resnet50_fpn(
+def retinanet_resnet50_adn_fpn(
     *,
     weights: Optional[RetinaNet_ResNet50_FPN_Weights] = None,
     progress: bool = True,
     num_classes: Optional[int] = None,
-    weights_backbone: Optional[ResNet50_Weights] = ResNet50_Weights.IMAGENET1K_V1,
+    weights_backbone: Optional[WeightsEnum] = None,
     trainable_backbone_layers: Optional[int] = None,
     **kwargs: Any,
 ) -> RetinaNet:
-    """
-    Constructs a RetinaNet model with a ResNet-50-FPN backbone.
 
-    .. betastatus:: detection module
-
-    Reference: `Focal Loss for Dense Object Detection <https://arxiv.org/abs/1708.02002>`_.
-
-    The input to the model is expected to be a list of tensors, each of shape ``[C, H, W]``, one for each
-    image, and should be in ``0-1`` range. Different images can have different sizes.
-
-    The behavior of the model changes depending on if it is in training or evaluation mode.
-
-    During training, the model expects both the input tensors and targets (list of dictionary),
-    containing:
-
-        - boxes (``FloatTensor[N, 4]``): the ground-truth boxes in ``[x1, y1, x2, y2]`` format, with
-          ``0 <= x1 < x2 <= W`` and ``0 <= y1 < y2 <= H``.
-        - labels (``Int64Tensor[N]``): the class label for each ground-truth box
-
-    The model returns a ``Dict[Tensor]`` during training, containing the classification and regression
-    losses.
-
-    During inference, the model requires only the input tensors, and returns the post-processed
-    predictions as a ``List[Dict[Tensor]]``, one for each input image. The fields of the ``Dict`` are as
-    follows, where ``N`` is the number of detections:
-
-        - boxes (``FloatTensor[N, 4]``): the predicted boxes in ``[x1, y1, x2, y2]`` format, with
-          ``0 <= x1 < x2 <= W`` and ``0 <= y1 < y2 <= H``.
-        - labels (``Int64Tensor[N]``): the predicted labels for each detection
-        - scores (``Tensor[N]``): the scores of each detection
-
-    For more details on the output, you may refer to :ref:`instance_seg_output`.
-
-    Example::
-
-        >>> model = torchvision.models.detection.retinanet_resnet50_fpn(weights=RetinaNet_ResNet50_FPN_Weights.DEFAULT)
-        >>> model.eval()
-        >>> x = [torch.rand(3, 300, 400), torch.rand(3, 500, 400)]
-        >>> predictions = model(x)
-
-    Args:
-        weights (:class:`~torchvision.models.detection.RetinaNet_ResNet50_FPN_Weights`, optional): The
-            pretrained weights to use. See
-            :class:`~torchvision.models.detection.RetinaNet_ResNet50_FPN_Weights`
-            below for more details, and possible values. By default, no
-            pre-trained weights are used.
-        progress (bool): If True, displays a progress bar of the download to stderr. Default is True.
-        num_classes (int, optional): number of output classes of the model (including the background)
-        weights_backbone (:class:`~torchvision.models.ResNet50_Weights`, optional): The pretrained weights for
-            the backbone.
-        trainable_backbone_layers (int, optional): number of trainable (not frozen) layers starting from final block.
-            Valid values are between 0 and 5, with 5 meaning all backbone layers are trainable. If ``None`` is
-            passed (the default) this value is set to 3.
-        **kwargs: parameters passed to the ``torchvision.models.detection.RetinaNet``
-            base class. Please refer to the `source code
-            <https://github.com/pytorch/vision/blob/main/torchvision/models/detection/retinanet.py>`_
-            for more details about this class.
-
-    .. autoclass:: torchvision.models.detection.RetinaNet_ResNet50_FPN_Weights
-        :members:
-    """
+    # 2024.03.20 @hslee
     weights = RetinaNet_ResNet50_FPN_Weights.verify(weights)
-    weights_backbone = ResNet50_Weights.verify(weights_backbone)
+    weights_backbone = torch.load('/home/hslee/INU_RISE/02_AdaptiveDepthNetwork/checkpoint/model_145.pth')
 
     if weights is not None:
         weights_backbone = None
@@ -807,92 +656,18 @@ def retinanet_resnet50_fpn(
     norm_layer = misc_nn_ops.FrozenBatchNorm2d if is_trained else nn.BatchNorm2d
 
     backbone = resnet50(weights=weights_backbone, progress=progress, norm_layer=norm_layer)
+    num_skippable_stages = backbone.num_skippable_stages
+    
     # skip P2 because it generates too many anchors (according to their paper)
     backbone = _resnet_fpn_extractor(
         backbone, trainable_backbone_layers, returned_layers=[2, 3, 4], extra_blocks=LastLevelP6P7(256, 256)
     )
-    model = RetinaNet(backbone, num_classes, **kwargs)
+    
+    model = RetinaNet(backbone, num_classes, num_skippable_stages=num_skippable_stages, **kwargs)
 
     if weights is not None:
         model.load_state_dict(weights.get_state_dict(progress=progress, check_hash=True))
         if weights == RetinaNet_ResNet50_FPN_Weights.COCO_V1:
             overwrite_eps(model, 0.0)
-
-    return model
-
-
-@register_model()
-@handle_legacy_interface(
-    weights=("pretrained", RetinaNet_ResNet50_FPN_V2_Weights.COCO_V1),
-    weights_backbone=("pretrained_backbone", ResNet50_Weights.IMAGENET1K_V1),
-)
-def retinanet_resnet50_fpn_v2(
-    *,
-    weights: Optional[RetinaNet_ResNet50_FPN_V2_Weights] = None,
-    progress: bool = True,
-    num_classes: Optional[int] = None,
-    weights_backbone: Optional[ResNet50_Weights] = None,
-    trainable_backbone_layers: Optional[int] = None,
-    **kwargs: Any,
-) -> RetinaNet:
-    """
-    Constructs an improved RetinaNet model with a ResNet-50-FPN backbone.
-
-    .. betastatus:: detection module
-
-    Reference: `Bridging the Gap Between Anchor-based and Anchor-free Detection via Adaptive Training Sample Selection
-    <https://arxiv.org/abs/1912.02424>`_.
-
-    :func:`~torchvision.models.detection.retinanet_resnet50_fpn` for more details.
-
-    Args:
-        weights (:class:`~torchvision.models.detection.RetinaNet_ResNet50_FPN_V2_Weights`, optional): The
-            pretrained weights to use. See
-            :class:`~torchvision.models.detection.RetinaNet_ResNet50_FPN_V2_Weights`
-            below for more details, and possible values. By default, no
-            pre-trained weights are used.
-        progress (bool): If True, displays a progress bar of the download to stderr. Default is True.
-        num_classes (int, optional): number of output classes of the model (including the background)
-        weights_backbone (:class:`~torchvision.models.ResNet50_Weights`, optional): The pretrained weights for
-            the backbone.
-        trainable_backbone_layers (int, optional): number of trainable (not frozen) layers starting from final block.
-            Valid values are between 0 and 5, with 5 meaning all backbone layers are trainable. If ``None`` is
-            passed (the default) this value is set to 3.
-        **kwargs: parameters passed to the ``torchvision.models.detection.RetinaNet``
-            base class. Please refer to the `source code
-            <https://github.com/pytorch/vision/blob/main/torchvision/models/detection/retinanet.py>`_
-            for more details about this class.
-
-    .. autoclass:: torchvision.models.detection.RetinaNet_ResNet50_FPN_V2_Weights
-        :members:
-    """
-    weights = RetinaNet_ResNet50_FPN_V2_Weights.verify(weights)
-    weights_backbone = ResNet50_Weights.verify(weights_backbone)
-
-    if weights is not None:
-        weights_backbone = None
-        num_classes = _ovewrite_value_param("num_classes", num_classes, len(weights.meta["categories"]))
-    elif num_classes is None:
-        num_classes = 91
-
-    is_trained = weights is not None or weights_backbone is not None
-    trainable_backbone_layers = _validate_trainable_layers(is_trained, trainable_backbone_layers, 5, 3)
-
-    backbone = resnet50(weights=weights_backbone, progress=progress)
-    backbone = _resnet_fpn_extractor(
-        backbone, trainable_backbone_layers, returned_layers=[2, 3, 4], extra_blocks=LastLevelP6P7(2048, 256)
-    )
-    anchor_generator = _default_anchorgen()
-    head = RetinaNetHead(
-        backbone.out_channels,
-        anchor_generator.num_anchors_per_location()[0],
-        num_classes,
-        norm_layer=partial(nn.GroupNorm, 32),
-    )
-    head.regression_head._loss_type = "giou"
-    model = RetinaNet(backbone, num_classes, anchor_generator=anchor_generator, head=head, **kwargs)
-
-    if weights is not None:
-        model.load_state_dict(weights.get_state_dict(progress=progress, check_hash=True))
 
     return model

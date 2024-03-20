@@ -21,23 +21,19 @@ import datetime
 import os
 import time
 import os,sys
-os.environ["OMP_NUM_THREADS"] = '8'
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import presets
 import torch
 import torch.utils.data
 import torchvision
-import torchvision.models.detection
-from torchvision.models.detection import retinanet_resnet50_fpn
-import torchvision.models.detection.mask_rcnn
 import utils
+from torch import nn
 from coco_utils import get_coco
-from engine import evaluate, train_one_epoch
+from engine import evaluate
 from group_by_aspect_ratio import create_aspect_ratio_groups, GroupedBatchSampler
 from torchvision.transforms import InterpolationMode
 from transforms import SimpleCopyPaste
-
+import models
 
 def copypaste_collate_fn(batch):
     copypaste = SimpleCopyPaste(blending=True, resize_interpolation=InterpolationMode.BILINEAR)
@@ -84,7 +80,7 @@ def get_args_parser(add_help=True):
         type=str,
         help="dataset name. Use coco for object detection and instance segmentation and coco_kp for Keypoint detection",
     )
-    parser.add_argument("--model", default="maskrcnn_resnet50_fpn", type=str, help="model name")
+    parser.add_argument("--model", default="retinanet_resnet50_adn_fpn", type=str, help="model name")
     parser.add_argument("--device", default="cuda", type=str, help="device (Use cuda or cpu Default: cuda)")
     parser.add_argument(
         "-b", "--batch-size", default=2, type=int, help="images per gpu, the total batch size is $NGPU x batch_size"
@@ -131,6 +127,10 @@ def get_args_parser(add_help=True):
     )
     parser.add_argument(
         "--lr-gamma", default=0.1, type=float, help="decrease lr by a factor of lr-gamma (multisteplr scheduler only)"
+    )
+    
+    parser.add_argument(
+        "--label-smoothing", default=0.0, type=float, help="label smoothing (default: 0.0)", dest="label_smoothing"
     )
     parser.add_argument("--print-freq", default=20, type=int, help="print frequency")
     parser.add_argument("--output-dir", default=".", type=str, help="path to save outputs")
@@ -182,6 +182,57 @@ def get_args_parser(add_help=True):
 
     return parser
 
+
+def train_one_epoch_twobackward(model, optimizer, data_loader, device, epoch, print_freq, scaler=None):
+    model.train()
+    metric_logger = utils.MetricLogger(delimiter="  ")
+    metric_logger.add_meter("lr", utils.SmoothedValue(window_size=1, fmt="{value:.6f}"))
+    header = f"Epoch: [{epoch}]"
+
+    lr_scheduler = None
+    if epoch == 0:
+        warmup_factor = 1.0 / 1000
+        warmup_iters = min(1000, len(data_loader) - 1)
+
+        lr_scheduler = torch.optim.lr_scheduler.LinearLR(
+            optimizer, start_factor=warmup_factor, total_iters=warmup_iters
+        )
+
+    for images, targets in metric_logger.log_every(data_loader, print_freq, header):
+        images = list(image.to(device) for image in images)
+        targets = [{k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in t.items()} for t in targets]
+        with torch.cuda.amp.autocast(enabled=scaler is not None):
+            loss_dict = model(images, targets)
+            losses = sum(loss for loss in loss_dict.values())
+
+        # reduce losses over all GPUs for logging purposes
+        loss_dict_reduced = utils.reduce_dict(loss_dict)
+        losses_reduced = sum(loss for loss in loss_dict_reduced.values())
+
+        loss_value = losses_reduced.item()
+
+        if not math.isfinite(loss_value):
+            print(f"Loss is {loss_value}, stopping training")
+            print(loss_dict_reduced)
+            sys.exit(1)
+
+        optimizer.zero_grad()
+        if scaler is not None:
+            scaler.scale(losses).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            losses.backward()
+            optimizer.step()
+
+        if lr_scheduler is not None:
+            lr_scheduler.step()
+
+        metric_logger.update(loss=losses_reduced, **loss_dict_reduced)
+        metric_logger.update(lr=optimizer.param_groups[0]["lr"])
+
+    return metric_logger
+    
 
 def main(args):
     if args.backend.lower() == "tv_tensor" and not args.use_v2:
@@ -247,28 +298,30 @@ def main(args):
         if args.rpn_score_thresh is not None:
             kwargs["rpn_score_thresh"] = args.rpn_score_thresh
     
+    # 2024.03.20 hslee
     # have to modify this part to use new model --------------------------------------------------------------------------------------
-    backbone = torch.load(args.weights_backbone)
-    model = retinanet_resnet50_fpn(weights=None)
-    model.load_state_dict(backbone['model'], strict=False)
-    
-    # torchvision.models.get_model() : https://pytorch.org/vision/main/generated/torchvision.models.get_model.html#torchvision.models.get_model
-    # model = torchvision.models.get_model(
-    #     args.model, weights=args.weights, weights_backbone=args.weights_backbone, num_classes=num_classes, **kwargs
-    # )
-    # --------------------------------------------------------------------------------------------------------------------------------      
-    for k, v in backbone['model'].items():
-        print(k, v.size())
-    print(f"model : {model}")
-    
+    # if args.model not in ("retinanet_resnet50_fpn", "swin_t", "vit_b_16", "vit_b_32", "efficientnet_v2_s", "efficientnet_b2"):
+    if args.model not in models.__dict__.keys():
+        print(f"{args.model} is not supported")
+        sys.exit()
+    model = models.__dict__[args.model]()
     model.to(device)
+    model_without_ddp = model
+    print(model)
+    
+    # --------------------------------------------------------------------------------------------------------------------------------      
+
     if args.distributed and args.sync_bn:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
 
-    model_without_ddp = model
+    criterion = nn.CrossEntropyLoss(label_smoothing=args.label_smoothing)
+    criterion_kd = nn.KLDivLoss(reduction='batchmean')
+    
     if args.distributed:
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
         model_without_ddp = model.module
+        
+    
 
     if args.norm_weight_decay is None:
         parameters = [p for p in model.parameters() if p.requires_grad]
@@ -313,17 +366,41 @@ def main(args):
             scaler.load_state_dict(checkpoint["scaler"])
 
     if args.test_only:
+        # We disable the cudnn benchmarking because it can noticeably affect the accuracy
+        torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
-        evaluate(model, data_loader_test, device=device)
-        return
+
+        skip_cfg = args.skip_cfg
+        if model_without_ddp.num_skippable_stages != len(skip_cfg):
+            print(f"Error: {args.model} has {model_without_ddp.num_skippable_stages} skippable stages!")
+            return
+
+    
+
+    # 2024.03.20 @hslee
+    num_skippable_stages = model_without_ddp.num_skippable_stages
+    print(f"num_skippable_stages : {num_skippable_stages}")
+    skip_cfg_basenet = [True for _ in range(num_skippable_stages)]
+    skip_cfg_supernet = [False for _ in range(num_skippable_stages)]
+    print(f"skip_cfg_basenet : {skip_cfg_basenet}")
+    print(f"skip_cfg_supernet : {skip_cfg_supernet}")
 
     print("Start training")
     start_time = time.time()
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)
-        train_one_epoch(model, optimizer, data_loader, device, epoch, args.print_freq, scaler)
+    
+        # 2024.03.20 @hslee
+        # train_one_epoch(model, optimizer, data_loader, device, epoch, args.print_freq, scaler)
+        
+        train_one_epoch_twobackward(model, optimizer, data_loader, device, epoch, print_freq=100, scaler=None)
+        
         lr_scheduler.step()
+        
+        evaluate(model, criterion, data_loader_test, device=device, skip=skip_cfg_basenet)
+        evaluate(model, criterion, data_loader_test, device=device, skip=skip_cfg_supernet)
+        
         if args.output_dir:
             checkpoint = {
                 "model": model_without_ddp.state_dict(),
@@ -353,7 +430,7 @@ if __name__ == "__main__":
 '''
     torchrun --nproc_per_node=4 train_custom.py \
     --dataset coco --data-path=/media/data/coco  \
-    --model retinanet_resnet50_fpn --epochs 26 --batch-size 4 --workers 8  \
+    --model retinanet_resnet50_adn_fpn --epochs 26 --batch-size 4 --workers 8  \
     --lr-steps 16 22 --aspect-ratio-group-factor 3 --lr 0.01 --weights-backbone /home/hslee/INU_RISE/02_AdaptiveDepthNetwork/checkpoint/model_145.pth \
-    2>&1 | tee ./train_log.txt
+    2>&1 | tee ./train/train_log.txt
 '''
