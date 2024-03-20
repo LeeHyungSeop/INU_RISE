@@ -1,5 +1,4 @@
-
-"""PyTorch Detection Training.
+r"""PyTorch Detection Training.
 
 To run in a multi-gpu environment, use the distributed launcher::
 
@@ -19,78 +18,25 @@ Because the number of images is smaller in the person keypoint subset of COCO,
 the number of epochs should be adapted so that we have the same number of iterations.
 """
 import datetime
+import os
 import time
+import os,sys
+os.environ["OMP_NUM_THREADS"] = '8'
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import presets
 import torch
 import torch.utils.data
 import torchvision
 import torchvision.models.detection
+from torchvision.models.detection import retinanet_resnet50_fpn
 import torchvision.models.detection.mask_rcnn
-from torchvision.transforms import InterpolationMode
-import os,sys
-os.environ["OMP_NUM_THREADS"] = '8'
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import presets
 import utils
 from coco_utils import get_coco
 from engine import evaluate, train_one_epoch
 from group_by_aspect_ratio import create_aspect_ratio_groups, GroupedBatchSampler
+from torchvision.transforms import InterpolationMode
 from transforms import SimpleCopyPaste
-
-from coco_eval import CocoEvaluator
-from coco_utils import get_coco_api_from_dataset
-
-
-def _get_iou_types(model):
-    model_without_ddp = model
-    if isinstance(model, torch.nn.parallel.DistributedDataParallel):
-        model_without_ddp = model.module
-    iou_types = ["bbox"]
-    if isinstance(model_without_ddp, torchvision.models.detection.MaskRCNN):
-        iou_types.append("segm")
-    if isinstance(model_without_ddp, torchvision.models.detection.KeypointRCNN):
-        iou_types.append("keypoints")
-    return iou_types
-
-def evaluate(model, data_loader, device, log_suffix="", skip=None):
-    n_threads = torch.get_num_threads()
-    # FIXME remove this and make paste_masks_in_image run on the GPU
-    torch.set_num_threads(1)
-    cpu_device = torch.device("cpu")
-    model.eval()
-    metric_logger = utils.MetricLogger(delimiter="  ")
-    header = f"[subnet]{skip} Test: {log_suffix}"
-
-    coco = get_coco_api_from_dataset(data_loader.dataset)
-    iou_types = _get_iou_types(model)
-    coco_evaluator = CocoEvaluator(coco, iou_types)
-
-    for images, targets in metric_logger.log_every(data_loader, 100, header):
-        images = list(img.to(device) for img in images)
-
-        if torch.cuda.is_available():
-            torch.cuda.synchronize()
-        model_time = time.time()
-        outputs = model(images)
-
-        outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
-        model_time = time.time() - model_time
-
-        res = {target["image_id"]: output for target, output in zip(targets, outputs)}
-        evaluator_time = time.time()
-        coco_evaluator.update(res)
-        evaluator_time = time.time() - evaluator_time
-        metric_logger.update(model_time=model_time, evaluator_time=evaluator_time)
-
-    # gather the stats from all processes
-    metric_logger.synchronize_between_processes()
-    print("Averaged stats:", metric_logger)
-    coco_evaluator.synchronize_between_processes()
-
-    # accumulate predictions from all images
-    coco_evaluator.accumulate()
-    coco_evaluator.summarize()
-    torch.set_num_threads(n_threads)
-    return coco_evaluator
 
 
 def copypaste_collate_fn(batch):
@@ -219,8 +165,7 @@ def get_args_parser(add_help=True):
     parser.add_argument("--world-size", default=1, type=int, help="number of distributed processes")
     parser.add_argument("--dist-url", default="env://", type=str, help="url used to set up distributed training")
     parser.add_argument("--weights", default=None, type=str, help="the weights enum name to load")
-    # parser.add_argument("--weights-backbone", default=None, type=str, help="the backbone weights enum name to load")
-    parser.add_argument("--weights-backbone", default="/home/hslee/INU_RISE/02_AdaptiveDepthNetwork/checkpoint/model_145.pth", type=str, help="the backbone weights enum name to load")
+    parser.add_argument("--weights-backbone", default=None, type=str, help="the backbone weights enum name to load")
 
     # Mixed precision training parameters
     parser.add_argument("--amp", action="store_true", help="Use torch.cuda.amp for mixed precision training")
@@ -301,16 +246,20 @@ def main(args):
     if "rcnn" in args.model:
         if args.rpn_score_thresh is not None:
             kwargs["rpn_score_thresh"] = args.rpn_score_thresh
-
-    # ----------------- Change the model to the model that we want to use ---------------------------------------------------
-    # have to change weights -> model145.pth, weights_backbone -> resnet50-adn
-    model = torchvision.models.get_model(
-        args.model, weights=args.weights, weights_backbone=args.weights_backbone, num_classes=num_classes, **kwargs
-    )
-
-
     
-    # -----------------------------------------------------------------------------------------------------------------------
+    # have to modify this part to use new model --------------------------------------------------------------------------------------
+    backbone = torch.load(args.weights_backbone)
+    model = retinanet_resnet50_fpn(weights=None)
+    model.load_state_dict(backbone['model'], strict=False)
+    
+    # torchvision.models.get_model() : https://pytorch.org/vision/main/generated/torchvision.models.get_model.html#torchvision.models.get_model
+    # model = torchvision.models.get_model(
+    #     args.model, weights=args.weights, weights_backbone=args.weights_backbone, num_classes=num_classes, **kwargs
+    # )
+    # --------------------------------------------------------------------------------------------------------------------------------      
+    for k, v in backbone['model'].items():
+        print(k, v.size())
+    print(f"model : {model}")
     
     model.to(device)
     if args.distributed and args.sync_bn:
@@ -399,3 +348,12 @@ def main(args):
 if __name__ == "__main__":
     args = get_args_parser().parse_args()
     main(args)
+
+
+'''
+    torchrun --nproc_per_node=4 train_custom.py \
+    --dataset coco --data-path=/media/data/coco  \
+    --model retinanet_resnet50_fpn --epochs 26 --batch-size 4 --workers 8  \
+    --lr-steps 16 22 --aspect-ratio-group-factor 3 --lr 0.01 --weights-backbone /home/hslee/INU_RISE/02_AdaptiveDepthNetwork/checkpoint/model_145.pth \
+    2>&1 | tee ./train_log.txt
+'''
