@@ -21,6 +21,7 @@ import datetime
 import os
 import time
 import os,sys
+import math
 
 import presets
 import torch
@@ -29,16 +30,16 @@ import torchvision
 import utils
 from torch import nn
 from coco_utils import get_coco
-from engine import evaluate, train_one_epoch, train_one_epoch_twobackward
+from engine import evaluate, train_one_epoch
 from group_by_aspect_ratio import create_aspect_ratio_groups, GroupedBatchSampler
 from torchvision.transforms import InterpolationMode
 from transforms import SimpleCopyPaste
 import models
+import torch.nn.functional as F
 
 def copypaste_collate_fn(batch):
     copypaste = SimpleCopyPaste(blending=True, resize_interpolation=InterpolationMode.BILINEAR)
     return copypaste(*utils.collate_fn(batch))
-
 
 def get_dataset(is_train, args):
     image_set = "train" if is_train else "val"
@@ -54,7 +55,6 @@ def get_dataset(is_train, args):
     )
     return ds, num_classes
 
-
 def get_transform(is_train, args):
     if is_train:
         return presets.DetectionPresetTrain(
@@ -66,7 +66,6 @@ def get_transform(is_train, args):
         return lambda img, target: (trans(img), target)
     else:
         return presets.DetectionPresetEval(backend=args.backend, use_v2=args.use_v2)
-
 
 def get_args_parser(add_help=True):
     import argparse
@@ -166,7 +165,7 @@ def get_args_parser(add_help=True):
     parser.add_argument("--world-size", default=1, type=int, help="number of distributed processes")
     parser.add_argument("--dist-url", default="env://", type=str, help="url used to set up distributed training")
     parser.add_argument("--weights", default=None, type=str, help="the weights enum name to load")
-    parser.add_argument("--weights-backbone", default=None, type=str, help="the backbone weights enum name to load")
+    parser.add_argument("--weights-backbone", default="/home/hslee/INU_RISE/02_AdaptiveDepthNetwork/pretrained/resnet50_adn_model_145.pth", type=str, help="the backbone weights enum name to load")
 
     # Mixed precision training parameters
     parser.add_argument("--amp", action="store_true", help="Use torch.cuda.amp for mixed precision training")
@@ -183,6 +182,108 @@ def get_args_parser(add_help=True):
 
     return parser
 
+
+
+def train_one_epoch_twobackward(
+    model, 
+    criterion_kd, 
+    optimizer, 
+    data_loader, 
+    device, 
+    epoch, 
+    args,  
+    scaler=None,
+    skip_cfg_basenet=None,
+    skip_cfg_supernet=None,
+    subpath_alpha=0.5,
+    ):
+    model.train()
+    metric_logger = utils.MetricLogger(delimiter="  ")
+    metric_logger.add_meter("lr", utils.SmoothedValue(window_size=1, fmt="{value:.6f}"))
+    header = f"Epoch: [{epoch}]"
+
+    lr_scheduler = None
+    if epoch == 0:
+        warmup_factor = 1.0 / 1000
+        warmup_iters = min(1000, len(data_loader) - 1)
+
+        lr_scheduler = torch.optim.lr_scheduler.LinearLR(
+            optimizer, start_factor=warmup_factor, total_iters=warmup_iters
+        )
+
+    for i, (images, targets) in enumerate(metric_logger.log_every(data_loader, args.print_freq, header)):
+        images = list(image.to(device) for image in images)
+        targets = [{k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in t.items()} for t in targets]
+        alpha = subpath_alpha
+        
+        optimizer.zero_grad()
+        # 1. forward pass for super_net
+        with torch.cuda.amp.autocast(enabled=scaler is not None):
+            loss_full, detection_full = model(images, targets, skip=skip_cfg_supernet)
+            losses_full = alpha * (sum(loss for loss in loss_full.values()))
+        
+        # reduce losses over all GPUs for logging purposes
+        loss_full_reduced = utils.reduce_dict(loss_full)
+        losses_full_reduced = sum(loss for loss in loss_full_reduced.values())
+        
+        loss_value_full = losses_full_reduced.item()
+        if not math.isfinite(loss_value_full):
+            print(f"Loss is {loss_value_full}, stopping training")
+            print(loss_full_reduced)
+            sys.exit(1)
+            
+        if scaler is not None:
+            scaler.scale(losses_full).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            losses_full.backward()
+            optimizer.step()
+
+        # 2. forward pass for base_net
+        with torch.cuda.amp.autocast(enabled=scaler is not None):
+            loss_base, detection_base = model(images, targets, skip=skip_cfg_basenet)
+            losses_base = alpha * (sum(loss for loss in loss_base.values()))
+        
+        # reduce losses over all GPUs for logging purposes
+        loss_base_reduced = utils.reduce_dict(loss_base)
+        losses_base_reduced = sum(loss for loss in loss_base_reduced.values())
+        
+        loss_value_base = losses_base_reduced.item()
+        if not math.isfinite(loss_value_base):
+            print(f"Loss is {loss_value_base}, stopping training")
+            print(loss_base_reduced)
+            sys.exit(1)
+            
+        # get softmax KD loss
+        T = 4  # temperature
+        loss_softmax_kd = loss_softmax_kd = criterion_kd(F.log_softmax(detection_full, dim=1), F.softmax(detection_base.clone().detach()/T, dim=1)) * T*T
+                
+        # final loss
+        loss_kd = (1. - alpha) * loss_softmax_kd
+
+        if scaler is not None:
+            scaler.scale(loss_kd).backward()
+            if args.clip_grad_norm is not None:
+                # we should unscale the gradients of optimizer's assigned params if do gradient clipping
+                scaler.unscale_(optimizer)
+                nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad_norm)
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            loss_kd.backward()
+            if args.clip_grad_norm is not None:
+                nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad_norm)
+            optimizer.step()
+            
+        if lr_scheduler is not None:
+            lr_scheduler.step()
+            
+        metric_logger.update(loss=losses_full_reduced, **loss_full_reduced)
+        metric_logger.update(loss=losses_base_reduced, **loss_base_reduced)
+        metric_logger.update(lr=optimizer.param_groups[0]["lr"])
+
+    return metric_logger
 
 def main(args):
     if args.backend.lower() == "tv_tensor" and not args.use_v2:
@@ -264,7 +365,7 @@ def main(args):
     if args.distributed and args.sync_bn:
         model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
 
-    criterion = nn.CrossEntropyLoss(label_smoothing=args.label_smoothing)
+    # 2024.03.21 @hslee
     criterion_kd = nn.KLDivLoss(reduction='batchmean')
     
     if args.distributed:
@@ -343,13 +444,13 @@ def main(args):
     
         # 2024.03.20 @hslee
         # train_one_epoch(model, optimizer, data_loader, device, epoch, args.print_freq, scaler)
-        train_one_epoch_twobackward(model, criterion, criterion_kd, optimizer, data_loader, device, epoch, args, scaler, skip_cfg_basenet, skip_cfg_supernet, subpath_alpha=args.subpath_alpha)
-        
+        train_one_epoch_twobackward(model, criterion_kd, optimizer, data_loader, device, epoch, args, scaler, skip_cfg_basenet, skip_cfg_supernet, subpath_alpha=args.subpath_alpha)
+
         lr_scheduler.step()
         
         # evaluate after every epoch
-        evaluate(model, criterion, data_loader_test, device=device, skip=skip_cfg_basenet)
-        evaluate(model, criterion, data_loader_test, device=device, skip=skip_cfg_supernet)
+        evaluate(model, data_loader_test, device=device, skip=skip_cfg_basenet)
+        evaluate(model, data_loader_test, device=device, skip=skip_cfg_supernet)
         
         if args.output_dir:
             checkpoint = {
@@ -375,8 +476,7 @@ if __name__ == "__main__":
 
 
 '''
-    torchrun --nproc_per_node=4 train_custom.py \ 
-    --dataset coco --data-path=/media/data/coco \
+    torchrun --nproc_per_node=4 train_custom.py --dataset coco --data-path=/media/data/coco \
     --model retinanet_resnet50_adn_fpn --epochs 26 \
     --batch-size 4 --workers 8 --lr-steps 16 22 \
     --aspect-ratio-group-factor 3 --lr 0.01 \

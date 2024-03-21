@@ -21,7 +21,7 @@ from ._utils import _ovewrite_named_param
 from torchvision.models.detection import _utils as det_utils
 from torchvision.models.detection._utils import _box_loss, overwrite_eps
 from torchvision.models.detection.anchor_utils import AnchorGenerator
-from torchvision.models.detection.backbone_utils import _resnet_fpn_extractor, _validate_trainable_layers
+from .backbone_utils import _resnet_fpn_extractor, _validate_trainable_layers
 from torchvision.models.detection.transform import GeneralizedRCNNTransform
 
 
@@ -644,7 +644,7 @@ def retinanet_resnet50_adn_fpn(
 
     # 2024.03.20 @hslee
     weights = RetinaNet_ResNet50_FPN_Weights.verify(weights)
-    weights_backbone = torch.load('/home/hslee/INU_RISE/02_AdaptiveDepthNetwork/pretrained/')
+    weights_backbone = torch.load('/home/hslee/INU_RISE/02_AdaptiveDepthNetwork/pretrained/resnet50_adn_model_145.pth')
 
     if weights is not None:
         weights_backbone = None
