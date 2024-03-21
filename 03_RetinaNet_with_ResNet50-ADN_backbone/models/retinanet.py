@@ -21,7 +21,7 @@ from ._utils import _ovewrite_named_param
 from torchvision.models.detection import _utils as det_utils
 from torchvision.models.detection._utils import _box_loss, overwrite_eps
 from torchvision.models.detection.anchor_utils import AnchorGenerator
-from .backbone_utils import _resnet_fpn_extractor, _validate_trainable_layers
+from .backbone_utils import _resnet50_fpn_extractor, _validate_trainable_layers
 from torchvision.models.detection.transform import GeneralizedRCNNTransform
 
 
@@ -653,14 +653,20 @@ def retinanet_resnet50_adn_fpn(
         num_classes = 91
 
     is_trained = weights is not None or weights_backbone is not None
+    
+    # 2024.03.21 @hslee
+    # (is_trained=True, trainable_backbone_layers=None, max_value=5, default_value=3)
     trainable_backbone_layers = _validate_trainable_layers(is_trained, trainable_backbone_layers, 5, 3)
+    # trainable_backbone_layers = None -> 3
+    
     norm_layer = misc_nn_ops.FrozenBatchNorm2d if is_trained else nn.BatchNorm2d
-
+    
+    
     backbone = resnet50(weights=weights_backbone, progress=progress, norm_layer=norm_layer)
     num_skippable_stages = backbone.num_skippable_stages
     
     # skip P2 because it generates too many anchors (according to their paper)
-    backbone = _resnet_fpn_extractor(
+    backbone = _resnet50_fpn_extractor(
         backbone, trainable_backbone_layers, returned_layers=[2, 3, 4], extra_blocks=LastLevelP6P7(256, 256)
     )
     
