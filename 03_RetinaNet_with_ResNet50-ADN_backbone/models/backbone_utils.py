@@ -99,11 +99,16 @@ def resnet_fpn_backbone(
 
 def _resnet50_fpn_extractor(
     backbone: resnet50,
-    trainable_layers: int, # 3
-    returned_layers: Optional[List[int]] = None, # [2, 3, 4]
-    extra_blocks: Optional[ExtraFPNBlock] = None,
+    trainable_layers: int,                          # 3
+    returned_layers: Optional[List[int]] = None,    # [2, 3, 4]
+    extra_blocks: Optional[ExtraFPNBlock] = None,   # LastLevelP6P7()
+        # P6 is obtained via a 3×3 stride-2 conv on C5, 
+        # P7 is computed by applying ReLU followed by a 3×3 stride-2 conv on P6.
     norm_layer: Optional[Callable[..., nn.Module]] = None,
 ) -> BackboneWithADNFPN:
+    
+    print("here")
+    print(f"extra_blocks: {extra_blocks}") 
 
     # select layers that won't be frozen
     if trainable_layers < 0 or trainable_layers > 5:

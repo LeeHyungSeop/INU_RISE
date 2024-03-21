@@ -668,6 +668,10 @@ def retinanet_resnet50_adn_fpn(
     # skip P2 because it generates too many anchors (according to their paper)
     backbone = _resnet50_fpn_extractor(
         backbone, trainable_backbone_layers, returned_layers=[2, 3, 4], extra_blocks=LastLevelP6P7(256, 256)
+        
+        # 2024.03.21 @hslee
+        # TypeError: extra_blocks should be of type ExtraFPNBlock not <class 'torchvision.ops.feature_pyramid_network.LastLevelP6P7'>
+        # backbone, trainable_backbone_layers, returned_layers=[2, 3, 4], extra_blocks=LastLevelP6P7(256, 256)
     )
     
     model = RetinaNet(backbone, num_classes, num_skippable_stages=num_skippable_stages, **kwargs)

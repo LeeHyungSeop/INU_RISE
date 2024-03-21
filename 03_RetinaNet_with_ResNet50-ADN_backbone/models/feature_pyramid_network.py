@@ -104,9 +104,11 @@ class FeaturePyramidNetwork(nn.Module):
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
 
-        if extra_blocks is not None:
-            if not isinstance(extra_blocks, ExtraFPNBlock):
-                raise TypeError(f"extra_blocks should be of type ExtraFPNBlock not {type(extra_blocks)}")
+        
+        print(f"extra_blocks: {extra_blocks}")
+        # if extra_blocks is not None:
+        #     if not isinstance(extra_blocks, ExtraFPNBlock):
+        #         raise TypeError(f"extra_blocks should be of type ExtraFPNBlock not {type(extra_blocks)}")
         self.extra_blocks = extra_blocks
 
     def _load_from_state_dict(
