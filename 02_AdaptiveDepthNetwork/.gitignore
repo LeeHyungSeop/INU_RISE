@@ -8,6 +8,3 @@ __pycache__/
 *.swp
 *.pdf
 log.*
-AdaptiveDepthNetwork/
-*.pth
-# 02_AdaptiveDepthNetwork/*
