@@ -196,7 +196,7 @@ def train_one_epoch_twobackward(
     skip_cfg_basenet=None,
     skip_cfg_supernet=None,
     subpath_alpha=0.5,
-    ):
+    ): 
     model.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter("lr", utils.SmoothedValue(window_size=1, fmt="{value:.6f}"))
@@ -219,7 +219,7 @@ def train_one_epoch_twobackward(
         optimizer.zero_grad()
         # 1. forward pass for super_net
         with torch.cuda.amp.autocast(enabled=scaler is not None):
-            loss_full, detection_full = model(images, targets, skip=skip_cfg_supernet)
+            loss_full = model(images, targets, skip=skip_cfg_supernet) # eager_outputs(losses, detections)
             print(f"loss_full : {loss_full}")
             print(f"detection_full : {detection_full}")
             losses_full = alpha * (sum(loss for loss in loss_full.values()))
@@ -259,7 +259,7 @@ def train_one_epoch_twobackward(
             
         # get softmax KD loss
         T = 4  # temperature
-        loss_softmax_kd = loss_softmax_kd = criterion_kd(F.log_softmax(detection_full, dim=1), F.softmax(detection_base.clone().detach()/T, dim=1)) * T*T
+        loss_softmax_kd = criterion_kd(F.log_softmax(detection_full, dim=1), F.softmax(detection_base.clone().detach()/T, dim=1)) * T*T
                 
         # final loss
         loss_kd = (1. - alpha) * loss_softmax_kd

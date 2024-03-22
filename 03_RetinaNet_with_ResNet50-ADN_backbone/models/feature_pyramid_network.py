@@ -150,8 +150,6 @@ class FeaturePyramidNetwork(nn.Module):
         """
         
         num_blocks = len(self.inner_blocks)
-        print(f"num_blocks : {num_blocks}")
-        print(f"idx : {idx}")
         if idx < 0:
             idx += num_blocks
         out = x
@@ -203,7 +201,6 @@ class FeaturePyramidNetwork(nn.Module):
         results.append(self.get_result_from_layer_blocks(last_inner, -1))
 
         for idx in range(len(x) - 1, -1, -1):
-            print(f"idx : {idx}")
             print(f"x[idx].shape : {x[idx].shape}")
             inner_lateral = self.get_result_from_inner_blocks(x[idx], idx)
             feat_shape = inner_lateral.shape[-2:]

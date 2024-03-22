@@ -567,11 +567,18 @@ class RetinaNet(nn.Module):
         # create the set of anchors
         anchors = self.anchor_generator(images, features)
         print(f"len(anchors) : {len(anchors)}")
-            # len(anchors) : 16
+            # len(anchors) : {bs}
 
+
+        # 2024.03.22 @hslee 
+        # having trouble with losses, detections's return type is str in train_custom.py > train_one_epoch_twobackward()
+        ## ----------------------------------------------------------------------------------------------------------------
         losses = {}
         detections: List[Dict[str, Tensor]] = []
         if self.training:
+            print(f"self.training : {self.training}")
+            print(f"len(targets) : {len(targets)}") # {bs}
+            
             if targets is None:
                 torch._assert(False, "targets should not be none when in training mode")
             else:
@@ -602,7 +609,10 @@ class RetinaNet(nn.Module):
                 warnings.warn("RetinaNet always returns a (Losses, Detections) tuple in scripting")
                 self._has_warned = True
             return losses, detections
+        print(f"losses : {losses}")
+        print(f"detections : {detections}")
         return self.eager_outputs(losses, detections)
+    ## ----------------------------------------------------------------------------------------------------------------
 
 
 _COMMON_META = {
