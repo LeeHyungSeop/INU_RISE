@@ -177,8 +177,8 @@ class ResNet(nn.Module):
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2, dilate=replace_stride_with_dilation[0])
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2, dilate=replace_stride_with_dilation[1])
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2, dilate=replace_stride_with_dilation[2])
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(512 * block.expansion, num_classes)
+        # self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        # self.fc = nn.Linear(512 * block.expansion, num_classes)
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -253,19 +253,38 @@ class ResNet(nn.Module):
         assert self.num_skippable_stages == len(skip), \
             f"The networks has {self.num_stages} skippable stages, got: {len(skip)}"
 
+        # 2024.03.22 @hslee
+        print("here is resnet.py > _forward_impl")
+        print(f"skip: {skip}")
+        print(f"x.shape: {x.shape}")
+        
         x = self.conv1(x)
+        print(f"x.shape: {x.shape}")
+        
         x = self.bn1(x)
         x = self.relu(x)
         x = self.maxpool(x)
-
+        print(f"x.shape: {x.shape}")
+        
         x = self.layer1(x, skip[0])
+        print(f"x.shape: {x.shape}")
+        
         x = self.layer2(x, skip[1])
+        print(f"x.shape: {x.shape}")
+        
         x = self.layer3(x, skip[2])
+        print(f"x.shape: {x.shape}")
+        
         x = self.layer4(x, skip[3])
+        print(f"x.shape: {x.shape}")
 
         x = self.avgpool(x)
+        print(f"x.shape: {x.shape}")
+        
         x = torch.flatten(x, 1)
+        print(f"x.shape: {x.shape}")
         x = self.fc(x)
+        print(f"x.shape: {x.shape}")
 
         return x
 
@@ -305,7 +324,12 @@ def _resnet(
     model = ResNet(block, layers, **kwargs)
 
     if weights is not None:
-        # 2024.03.20 @hslee
+        # 2024.03.22 @hslee
+        # remove key(s) in state_dict: "fc.weight", "fc.bias". in weights['model']
+        # because full resnet50 architecture including fc.weight and fc.bias is not used in RetinaNet backbone.
+        state_dict = weights['model']
+        del state_dict["fc.weight"]
+        del state_dict["fc.bias"]
         model.load_state_dict(weights['model'])
 
     return model

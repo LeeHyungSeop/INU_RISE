@@ -10,6 +10,7 @@ from ._api import _get_enum_from_fn, WeightsEnum
 from ._utils import handle_legacy_interface, IntermediateLayerGetter
 
 
+# 2024.03.21 @hslee
 class BackboneWithADNFPN(nn.Module):
     """
     Adds a FPN on top of a model.
@@ -52,10 +53,33 @@ class BackboneWithADNFPN(nn.Module):
             norm_layer=norm_layer,
         )
         self.out_channels = out_channels
+        
+        # 2024.03.22 @hslee
+        # print(f"self.body : {self.body}") # IntermediateLayerGetter()
+        # print(f"self.fpn : {self.fpn}") # FeaturePyramidNetwork()
+        # print(f"self.out_channels : {self.out_channels}") # 256
 
+    # 2024.03.22 @hslee
     def forward(self, x: Tensor, skip=None) -> Dict[str, Tensor]:
-        x = self.body(x, skip=skip) # 2024.03.21 @hslee
+        print(f"skip: {skip}") 
+        print(f"x.shape: {x.shape}")  # (bs, 3, 800, 1216)
+        
+        # 1. IntermediateLayerGetter() -> backbone's body
+        x = self.body(x, skip=skip)  # self.body() returns OrderedDict type. 'model_out',  'features'
+            # 'model_out' : resnet50's output tensor
+            # 'features' : resnet50's feature maps for lateral connections in FPN
+            
+            # Trouble(mat1 and mat2 shapes cannot be multiplied (32768x1 and 2048x1000))
+            # i deleted last FC layer in resnet50.py
+            # because resnet50 for RetinaNet backbone is not needed FC layer(1000 classes classificayion) anymore. 
+            
+        # 2. FeaturePyramidNetwork() -> backbones's fpn
         x = self.fpn(x)
+            # TypeError: conv2d() received an invalid combination of arguments - got (collections.OrderedDict, Parameter, Parameter, tuple, tuple, tuple, int), but expected one of:
+            # * (Tensor input, Tensor weight, Tensor bias, tuple of ints stride, tuple of ints padding, tuple of ints dilation, int groups)
+            # didn't match because some of the arguments have invalid types: (!collections.OrderedDict!, !Parameter!, !Parameter!, !tuple of (int, int)!, !tuple of (int, int)!, !tuple of (int, int)!, int)
+            
+        
         return x
 
 
@@ -132,6 +156,8 @@ def _resnet50_fpn_extractor(
     in_channels_stage2 = backbone.inplanes // 8
     in_channels_list = [in_channels_stage2 * 2 ** (i - 1) for i in returned_layers]
     out_channels = 256
+    
+    # 2024.03.21 @hslee
     return BackboneWithADNFPN(
         backbone, return_layers, in_channels_list, out_channels, extra_blocks=extra_blocks, norm_layer=norm_layer
     )

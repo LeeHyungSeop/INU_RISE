@@ -86,7 +86,6 @@ class RetinaNetHead(nn.Module):
         # type: (List[Tensor]) -> Dict[str, Tensor]
         return {"cls_logits": self.classification_head(x), "bbox_regression": self.regression_head(x)}
 
-
 class RetinaNetClassificationHead(nn.Module):
     """
     A classification head for use in RetinaNet.
@@ -208,7 +207,6 @@ class RetinaNetClassificationHead(nn.Module):
             all_cls_logits.append(cls_logits)
 
         return torch.cat(all_cls_logits, dim=1)
-
 
 class RetinaNetRegressionHead(nn.Module):
     """
@@ -377,6 +375,8 @@ class RetinaNet(nn.Module):
         self.anchor_generator = anchor_generator
 
         if head is None:
+            print(f"backbone.out_channels : {backbone.out_channels}")
+            print(f"anchor_generator.num_anchors_per_location()[0] : {anchor_generator.num_anchors_per_location()[0]}")
             head = RetinaNetHead(backbone.out_channels, anchor_generator.num_anchors_per_location()[0], num_classes)
         self.head = head
 
@@ -507,7 +507,10 @@ class RetinaNet(nn.Module):
 
         # get the original image sizes
         original_image_sizes: List[Tuple[int, int]] = []
+        print(f"original_image_sizes : {original_image_sizes}")
+        # images : batch size
         for img in images:
+            print(f"img.shape : {img.shape}")
             val = img.shape[-2:]
             torch._assert(
                 len(val) == 2,
@@ -515,8 +518,14 @@ class RetinaNet(nn.Module):
             )
             original_image_sizes.append((val[0], val[1]))
 
-        # transform the input
-        images, targets = self.transform(images, targets)
+        # transform the input to (800, 1216) 2024.03.20 @hslee
+        images, targets = self.transform(images, targets) 
+        print(f"images.tensors.shape : {images.tensors.shape}") # images.tensors.shape : torch.Size([16, 3, 800, 1216])
+        print(f"len(targets) : {len(targets)}") # 16
+        print(f"targets[0] : \
+            {targets[0]['boxes'].shape}, {targets[0]['labels'].shape}, {targets[0]['masks'].shape} \
+        ")
+            # targets[0] : torch.Size([1, 4]), torch.Size([1]), torch.Size([1, 800, 1066])
 
         # Check for degenerate boxes
         # TODO: Move this to a function
@@ -534,8 +543,15 @@ class RetinaNet(nn.Module):
                         f" Found invalid box {degen_bb} for target at index {target_idx}.",
                     )
 
+        
+        print(f"self.backbone : {self.backbone}")
         # get the features from the backbone
+        # RuntimeError: mat1 and mat2 shapes cannot be multiplied (32768x1 and 2048x1000)
+        # [2024-03-22 15:16:58,517] torch.distributed.elastic.multiprocessing.api: \
+            # [ERROR] failed (exitcode: 1) local_rank: 0 (pid: 2323658) of binary: /home/hslee/anaconda3/envs/DL/bin/python
         features = self.backbone(images.tensors, skip=skip)
+        print(f"features.shape : {features.shape}")
+        
         if isinstance(features, torch.Tensor):
             features = OrderedDict([("0", features)])
 
@@ -644,7 +660,8 @@ def retinanet_resnet50_adn_fpn(
 
     # 2024.03.20 @hslee
     weights = RetinaNet_ResNet50_FPN_Weights.verify(weights)
-    weights_backbone = torch.load('/home/hslee/INU_RISE/02_AdaptiveDepthNetwork/pretrained/resnet50_adn_model_145.pth')
+    # weights_backbone = torch.load('/home/hslee/INU_RISE/02_AdaptiveDepthNetwork/pretrained/resnet50_adn_model_145.pth')
+    weights_backbone = torch.load('/home/hslee/Desktop/Embedded_AI/INU_4-1/RISE/02_AdaptiveDepthNetwork/pretrained/resnet50_adn_model_145.pth')
 
     if weights is not None:
         weights_backbone = None
@@ -667,18 +684,21 @@ def retinanet_resnet50_adn_fpn(
     
     # skip P2 because it generates too many anchors (according to their paper)
     backbone = _resnet50_fpn_extractor(
-        backbone, trainable_backbone_layers, returned_layers=[2, 3, 4], extra_blocks=LastLevelP6P7(256, 256)
-        
         # 2024.03.21 @hslee
         # TypeError: extra_blocks should be of type ExtraFPNBlock not <class 'torchvision.ops.feature_pyramid_network.LastLevelP6P7'>
         # backbone, trainable_backbone_layers, returned_layers=[2, 3, 4], extra_blocks=LastLevelP6P7(256, 256)
+        backbone, trainable_backbone_layers, returned_layers=[2, 3, 4], extra_blocks=LastLevelP6P7(256, 256)
     )
+    print(f"backbone : {backbone}")
     
     model = RetinaNet(backbone, num_classes, num_skippable_stages=num_skippable_stages, **kwargs)
 
+    print(f"weights : {weights}")
     if weights is not None:
         model.load_state_dict(weights.get_state_dict(progress=progress, check_hash=True))
         if weights == RetinaNet_ResNet50_FPN_Weights.COCO_V1:
+            # #parameters
+            print(f"the number of parameters : {sum(p.numel() for p in model.parameters())}")
             overwrite_eps(model, 0.0)
 
     return model

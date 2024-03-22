@@ -165,7 +165,7 @@ def get_args_parser(add_help=True):
     parser.add_argument("--world-size", default=1, type=int, help="number of distributed processes")
     parser.add_argument("--dist-url", default="env://", type=str, help="url used to set up distributed training")
     parser.add_argument("--weights", default=None, type=str, help="the weights enum name to load")
-    parser.add_argument("--weights-backbone", default="/home/hslee/INU_RISE/02_AdaptiveDepthNetwork/pretrained/resnet50_adn_model_145.pth", type=str, help="the backbone weights enum name to load")
+    parser.add_argument("--weights-backbone", default=None, type=str, help="the backbone weights enum name to load")
 
     # Mixed precision training parameters
     parser.add_argument("--amp", action="store_true", help="Use torch.cuda.amp for mixed precision training")
@@ -358,7 +358,7 @@ def main(args):
     model = models.__dict__[args.model]()
     model.to(device)
     model_without_ddp = model
-    print(model)
+    print(f"model : {model}")
     
     # --------------------------------------------------------------------------------------------------------------------------------      
 
@@ -475,11 +475,22 @@ if __name__ == "__main__":
     main(args)
 
 
+# ampere
 '''
     torchrun --nproc_per_node=4 train_custom.py --dataset coco --data-path=/media/data/coco \
     --model retinanet_resnet50_adn_fpn --epochs 26 \
     --batch-size 4 --workers 8 --lr-steps 16 22 \
     --aspect-ratio-group-factor 3 --lr 0.01 \
     --weights-backbone /home/hslee/INU_RISE/02_AdaptiveDepthNetwork/pretrained/resnet50_adn_model_145.pth \
+    2>&1 | tee ./logs/log_train_custom.txt
+'''
+
+# Desktop
+'''
+    torchrun --nproc_per_node=1 train_custom.py --dataset coco --data-path=/home/hslee/Desktop/Datasets/COCO \
+    --model retinanet_resnet50_adn_fpn --epochs 26 \
+    --batch-size 16 --workers 8 --lr-steps 16 22 \
+    --aspect-ratio-group-factor 3 --lr 0.01 \
+    --weights-backbone /home/hslee/Desktop/Embedded_AI/INU_4-1/RISE/02_AdaptiveDepthNetwork/pretrained/resnet50_adn_model_145.pth \
     2>&1 | tee ./logs/log_train_custom.txt
 '''

@@ -90,25 +90,38 @@ class IntermediateLayerGetter(nn.Module):
 
 
     def forward(self, x, skip=(False, False, False, False)):
+
         intermedia_features = OrderedDict()
-        #print(self.items())
+        
         out = {}
         num_layer = 0
+        
+        print(f"self.model.name_children() : {self.model.named_children()}")
+        
         for name, module in self.model.named_children():
+            print(f"name: {name}")
+            
+            if ('_skippable' in name):
+                print(f"skip: {name}: skip={skip[num_layer]}, size:{x.size()}")
             if ('layer' in name):
-            # if ('_skippable' in name):
-                # print("skip:", name)
-                # print(f"num_layer: {num_layer}")
+                print(f"num_layer: {num_layer}")
+                
                 x = module(x, skip=skip[num_layer])
-                # print(f"skip: {name}: skip={skip[num_layer]}, size:{x.size()}")
+                print(f"x.shape: {x.shape}")
                 num_layer += 1
             else:
+                print(f"noskip: {name}, size:{x.size()}")
                 x = module(x)
-                # print(f"noskip: {name}, size:{x.size()}")
+                
+            # 2024.03.22 @hslee : feature map extraction for lateral connections
             if name in self.return_layers:
                 intermedia_features[name] = torch.squeeze(torch.nn.functional.adaptive_avg_pool2d(x,(1,1)))
-        out['model_out'] = x
-        out['features'] = intermedia_features
+                print(f"intermedia_features[name].shape: {intermedia_features[name].shape}")
+
+        out['model_out'] = x                  # last layer output
+        out['features'] = intermedia_features # feature map extraction for lateral connections
+        print(f"out['model_out'].shape: {out['model_out'].shape}")
+        print(f"out['features']: {out['features']}")
 
         return out
 

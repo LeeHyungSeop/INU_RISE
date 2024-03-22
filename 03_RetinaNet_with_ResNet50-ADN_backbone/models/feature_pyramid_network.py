@@ -149,6 +149,7 @@ class FeaturePyramidNetwork(nn.Module):
         but torchscript doesn't support this yet
         """
         num_blocks = len(self.inner_blocks)
+        print(f"num_blocks : {num_blocks}")
         if idx < 0:
             idx += num_blocks
         out = x
@@ -182,11 +183,18 @@ class FeaturePyramidNetwork(nn.Module):
             results (OrderedDict[Tensor]): feature maps after FPN layers.
                 They are ordered from the highest resolution first.
         """
+        print("here")
+        
         # unpack OrderedDict into two lists for easier handling
-        names = list(x.keys())
+        names = list(x.keys()) 
+        # print(f"names : {names}") # ['model_out', 'features']
         x = list(x.values())
+        print(f"x : {x}")
+        print(f"x[-1] : {x[-1]}")
+        
 
         last_inner = self.get_result_from_inner_blocks(x[-1], -1)
+        print("until here")
         results = []
         results.append(self.get_result_from_layer_blocks(last_inner, -1))
 
