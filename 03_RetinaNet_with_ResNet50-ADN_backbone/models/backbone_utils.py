@@ -74,10 +74,7 @@ class BackboneWithADNFPN(nn.Module):
             # because resnet50 for RetinaNet backbone is not needed FC layer(1000 classes classificayion) anymore. 
             
         # 2. FeaturePyramidNetwork() -> backbones's fpn
-        x = self.fpn(x)
-            # TypeError: conv2d() received an invalid combination of arguments - got (collections.OrderedDict, Parameter, Parameter, tuple, tuple, tuple, int), but expected one of:
-            # * (Tensor input, Tensor weight, Tensor bias, tuple of ints stride, tuple of ints padding, tuple of ints dilation, int groups)
-            # didn't match because some of the arguments have invalid types: (!collections.OrderedDict!, !Parameter!, !Parameter!, !tuple of (int, int)!, !tuple of (int, int)!, !tuple of (int, int)!, int)
+        x = self.fpn(x['features']) # x: Dict[str, Tensor]
             
         
         return x
@@ -131,7 +128,6 @@ def _resnet50_fpn_extractor(
     norm_layer: Optional[Callable[..., nn.Module]] = None,
 ) -> BackboneWithADNFPN:
     
-    print("here")
     print(f"extra_blocks: {extra_blocks}") 
 
     # select layers that won't be frozen

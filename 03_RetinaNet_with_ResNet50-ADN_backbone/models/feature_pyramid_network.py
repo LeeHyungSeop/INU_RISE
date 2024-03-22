@@ -148,8 +148,10 @@ class FeaturePyramidNetwork(nn.Module):
         This is equivalent to self.inner_blocks[idx](x),
         but torchscript doesn't support this yet
         """
+        
         num_blocks = len(self.inner_blocks)
         print(f"num_blocks : {num_blocks}")
+        print(f"idx : {idx}")
         if idx < 0:
             idx += num_blocks
         out = x
@@ -183,22 +185,26 @@ class FeaturePyramidNetwork(nn.Module):
             results (OrderedDict[Tensor]): feature maps after FPN layers.
                 They are ordered from the highest resolution first.
         """
-        print("here")
+
+        print(f"x : {x}")
         
         # unpack OrderedDict into two lists for easier handling
         names = list(x.keys()) 
-        # print(f"names : {names}") # ['model_out', 'features']
+        print(f"names : {names}")
         x = list(x.values())
-        print(f"x : {x}")
-        print(f"x[-1] : {x[-1]}")
+        print(f"len(x) : {len(x)}")
         
-
         last_inner = self.get_result_from_inner_blocks(x[-1], -1)
-        print("until here")
+            # TypeError: conv2d() received an invalid combination of arguments - got (collections.OrderedDict, Parameter, Parameter, tuple, tuple, tuple, int), but expected one of:
+            # * (Tensor input, Tensor weight, Tensor bias, tuple of ints stride, tuple of ints padding, tuple of ints dilation, int groups)
+            # didn't match because some of the arguments have invalid types: (!collections.OrderedDict!, !Parameter!, !Parameter!, !tuple of (int, int)!, !tuple of (int, int)!, !tuple of (int, int)!, int)
+
         results = []
         results.append(self.get_result_from_layer_blocks(last_inner, -1))
 
-        for idx in range(len(x) - 2, -1, -1):
+        for idx in range(len(x) - 1, -1, -1):
+            print(f"idx : {idx}")
+            print(f"x[idx].shape : {x[idx].shape}")
             inner_lateral = self.get_result_from_inner_blocks(x[idx], idx)
             feat_shape = inner_lateral.shape[-2:]
             inner_top_down = F.interpolate(last_inner, size=feat_shape, mode="nearest")

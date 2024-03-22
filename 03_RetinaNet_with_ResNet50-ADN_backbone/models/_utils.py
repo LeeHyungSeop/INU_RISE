@@ -115,7 +115,8 @@ class IntermediateLayerGetter(nn.Module):
                 
             # 2024.03.22 @hslee : feature map extraction for lateral connections
             if name in self.return_layers:
-                intermedia_features[name] = torch.squeeze(torch.nn.functional.adaptive_avg_pool2d(x,(1,1)))
+                # intermedia_features[name] = torch.squeeze(torch.nn.functional.adaptive_avg_pool2d(x,(1,1)))
+                intermedia_features[name] = x
                 print(f"intermedia_features[name].shape: {intermedia_features[name].shape}")
 
         out['model_out'] = x                  # last layer output

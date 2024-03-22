@@ -550,7 +550,6 @@ class RetinaNet(nn.Module):
         # [2024-03-22 15:16:58,517] torch.distributed.elastic.multiprocessing.api: \
             # [ERROR] failed (exitcode: 1) local_rank: 0 (pid: 2323658) of binary: /home/hslee/anaconda3/envs/DL/bin/python
         features = self.backbone(images.tensors, skip=skip)
-        print(f"features.shape : {features.shape}")
         
         if isinstance(features, torch.Tensor):
             features = OrderedDict([("0", features)])
@@ -560,9 +559,15 @@ class RetinaNet(nn.Module):
 
         # compute the retinanet heads outputs using the features
         head_outputs = self.head(features)
-
+        print(f"head_outputs['cls_logits'].shape : {head_outputs['cls_logits'].shape}") 
+            # (bs, 190323, 91)
+        print(f"head_outputs['bbox_regression'].shape : {head_outputs['bbox_regression'].shape}")
+            # (bs, 190323, 4)
+        
         # create the set of anchors
         anchors = self.anchor_generator(images, features)
+        print(f"len(anchors) : {len(anchors)}")
+            # len(anchors) : 16
 
         losses = {}
         detections: List[Dict[str, Tensor]] = []

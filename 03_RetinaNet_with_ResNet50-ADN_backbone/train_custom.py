@@ -220,6 +220,8 @@ def train_one_epoch_twobackward(
         # 1. forward pass for super_net
         with torch.cuda.amp.autocast(enabled=scaler is not None):
             loss_full, detection_full = model(images, targets, skip=skip_cfg_supernet)
+            print(f"loss_full : {loss_full}")
+            print(f"detection_full : {detection_full}")
             losses_full = alpha * (sum(loss for loss in loss_full.values()))
         
         # reduce losses over all GPUs for logging purposes
