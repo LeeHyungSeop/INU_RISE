@@ -183,14 +183,12 @@ class FeaturePyramidNetwork(nn.Module):
             results (OrderedDict[Tensor]): feature maps after FPN layers.
                 They are ordered from the highest resolution first.
         """
-
-        print(f"x : {x}")
-        
+                
         # unpack OrderedDict into two lists for easier handling
         names = list(x.keys()) 
-        print(f"names : {names}")
+        # print(f"names : {names}")
         x = list(x.values())
-        print(f"len(x) : {len(x)}")
+        # print(f"len(x) : {len(x)}") # 3  (layer 2, 3, 4)
         
         last_inner = self.get_result_from_inner_blocks(x[-1], -1)
             # TypeError: conv2d() received an invalid combination of arguments - got (collections.OrderedDict, Parameter, Parameter, tuple, tuple, tuple, int), but expected one of:
@@ -201,7 +199,7 @@ class FeaturePyramidNetwork(nn.Module):
         results.append(self.get_result_from_layer_blocks(last_inner, -1))
 
         for idx in range(len(x) - 1, -1, -1):
-            print(f"x[idx].shape : {x[idx].shape}")
+            print(f"x[idx].shape : {x[idx].shape}") #
             inner_lateral = self.get_result_from_inner_blocks(x[idx], idx)
             feat_shape = inner_lateral.shape[-2:]
             inner_top_down = F.interpolate(last_inner, size=feat_shape, mode="nearest")

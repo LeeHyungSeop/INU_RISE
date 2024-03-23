@@ -278,13 +278,13 @@ class ResNet(nn.Module):
         x = self.layer4(x, skip[3])
         print(f"x.shape: {x.shape}")
 
-        x = self.avgpool(x)
-        print(f"x.shape: {x.shape}")
+        # x = self.avgpool(x)
+        # print(f"x.shape: {x.shape}")
         
-        x = torch.flatten(x, 1)
-        print(f"x.shape: {x.shape}")
-        x = self.fc(x)
-        print(f"x.shape: {x.shape}")
+        # x = torch.flatten(x, 1)
+        # print(f"x.shape: {x.shape}")
+        # x = self.fc(x)
+        # print(f"x.shape: {x.shape}")
 
         return x
 

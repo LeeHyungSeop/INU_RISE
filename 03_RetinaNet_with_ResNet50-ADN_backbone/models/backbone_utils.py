@@ -62,7 +62,7 @@ class BackboneWithADNFPN(nn.Module):
     # 2024.03.22 @hslee
     def forward(self, x: Tensor, skip=None) -> Dict[str, Tensor]:
         print(f"skip: {skip}") 
-        print(f"x.shape: {x.shape}")  # (bs, 3, 800, 1216)
+        # print(f"x.shape: {x.shape}")  # (bs, 3, 800, 1216)
         
         # 1. IntermediateLayerGetter() -> backbone's body
         x = self.body(x, skip=skip)  # self.body() returns OrderedDict type. 'model_out',  'features'

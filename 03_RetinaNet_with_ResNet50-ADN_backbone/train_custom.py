@@ -156,7 +156,7 @@ def get_args_parser(add_help=True):
         help="Only test the model",
         action="store_true",
     )
-
+    parser.add_argument("--clip-grad-norm", default=None, type=float, help="the maximum gradient norm (default None)")
     parser.add_argument(
         "--use-deterministic-algorithms", action="store_true", help="Forces the use of deterministic algorithms only."
     )
@@ -200,7 +200,6 @@ def train_one_epoch_twobackward(
     model.train()
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter("lr", utils.SmoothedValue(window_size=1, fmt="{value:.6f}"))
-    header = f"Epoch: [{epoch}]"
 
     lr_scheduler = None
     if epoch == 0:
@@ -211,61 +210,55 @@ def train_one_epoch_twobackward(
             optimizer, start_factor=warmup_factor, total_iters=warmup_iters
         )
 
+    header = f"Epoch: [{epoch}]"
     for i, (images, targets) in enumerate(metric_logger.log_every(data_loader, args.print_freq, header)):
         images = list(image.to(device) for image in images)
         targets = [{k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in t.items()} for t in targets]
         alpha = subpath_alpha
         
+        # 2024.03.23 @hslee
         optimizer.zero_grad()
-        # 1. forward pass for super_net
         with torch.cuda.amp.autocast(enabled=scaler is not None):
-            loss_full = model(images, targets, skip=skip_cfg_supernet) # eager_outputs(losses, detections)
-            print(f"loss_full : {loss_full}")
-            print(f"detection_full : {detection_full}")
-            losses_full = alpha * (sum(loss for loss in loss_full.values()))
-        
-        # reduce losses over all GPUs for logging purposes
-        loss_full_reduced = utils.reduce_dict(loss_full)
-        losses_full_reduced = sum(loss for loss in loss_full_reduced.values())
-        
-        loss_value_full = losses_full_reduced.item()
-        if not math.isfinite(loss_value_full):
-            print(f"Loss is {loss_value_full}, stopping training")
-            print(loss_full_reduced)
-            sys.exit(1)
+            # 1. forward pass for super_net
+            focalloss_cls_super, loss_bbox_super, out_cls_super, out_bbox_super \
+                = model(images, targets, skip=skip_cfg_supernet) # if training 
+            print(f"focalloss_cls_super : {focalloss_cls_super}")
+            print(f"loss_bbox_super : {loss_bbox_super}")
+            print(f"out_cls_super.shape : {out_cls_super.shape}") 
+            print(f"out_bbox_super.shape : {out_bbox_super.shape}")
             
-        if scaler is not None:
-            scaler.scale(losses_full).backward()
-            scaler.step(optimizer)
-            scaler.update()
-        else:
-            losses_full.backward()
-            optimizer.step()
-
-        # 2. forward pass for base_net
-        with torch.cuda.amp.autocast(enabled=scaler is not None):
-            loss_base, detection_base = model(images, targets, skip=skip_cfg_basenet)
-            losses_base = alpha * (sum(loss for loss in loss_base.values()))
+            # losses_super = alpha * (sum(loss for loss in loss_super.values()))
+            loss_super = alpha * (focalloss_cls_super + loss_bbox_super)            
+            print(f"loss_super : {loss_super}")
         
-        # reduce losses over all GPUs for logging purposes
-        loss_base_reduced = utils.reduce_dict(loss_base)
-        losses_base_reduced = sum(loss for loss in loss_base_reduced.values())
-        
-        loss_value_base = losses_base_reduced.item()
-        if not math.isfinite(loss_value_base):
-            print(f"Loss is {loss_value_base}, stopping training")
-            print(loss_base_reduced)
-            sys.exit(1)
+            with torch.cuda.amp.autocast(enabled=False):
+                if scaler is not None:
+                    scaler.scale(loss_super).backward()
+                else : 
+                    loss_super.backward()
             
-        # get softmax KD loss
-        T = 4  # temperature
-        loss_softmax_kd = criterion_kd(F.log_softmax(detection_full, dim=1), F.softmax(detection_base.clone().detach()/T, dim=1)) * T*T
-                
-        # final loss
-        loss_kd = (1. - alpha) * loss_softmax_kd
+            # 2. forward pass for base_net
+            focalloss_cls_base, loss_bbox_base, out_cls_base, out_bbox_base \
+                = model(images, targets, skip=skip_cfg_basenet) # if training 
+            print(f"focalloss_cls_base : {focalloss_cls_base}")
+            print(f"loss_bbox_base : {loss_bbox_base}")
+            print(f"out_cls_base.shape : {out_cls_base.shape}") 
+            print(f"out_bbox_base.shape : {out_bbox_base.shape}")
+            
+            # T = 4  # temperature
+            loss_cls_kd = criterion_kd(F.log_softmax(out_cls_super, dim=1), F.softmax(out_cls_base.clone().detach(), dim=1))
+            loss_bbox_kd = criterion_kd(F.log_softmax(out_bbox_super, dim=-1), F.softmax(out_bbox_base.clone().detach(), dim=-1))
+            print(f"loss_cls_kd : {loss_cls_kd}")
+            print(f"loss_bbox_kd : {loss_bbox_kd}")
+            
+            loss_base = (1. - alpha) * (0.5 * loss_cls_kd + 5.0 * loss_bbox_kd)
+            print(f"loss_base : {loss_base}")
+            if not math.isfinite(loss_base):
+                print(f"Loss is {loss_base}, stopping training")
+                sys.exit(1)
 
         if scaler is not None:
-            scaler.scale(loss_kd).backward()
+            scaler.scale(loss_base).backward() 
             if args.clip_grad_norm is not None:
                 # we should unscale the gradients of optimizer's assigned params if do gradient clipping
                 scaler.unscale_(optimizer)
@@ -273,16 +266,16 @@ def train_one_epoch_twobackward(
             scaler.step(optimizer)
             scaler.update()
         else:
-            loss_kd.backward()
+            loss_base.backward()
             if args.clip_grad_norm is not None:
                 nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad_norm)
             optimizer.step()
-            
+        
         if lr_scheduler is not None:
             lr_scheduler.step()
             
-        metric_logger.update(loss=losses_full_reduced, **loss_full_reduced)
-        metric_logger.update(loss=losses_base_reduced, **loss_base_reduced)
+        metric_logger.update(loss=loss_super, **loss_super)
+        metric_logger.update(loss=loss_base, **loss_base)
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
 
     return metric_logger
@@ -371,7 +364,7 @@ def main(args):
     criterion_kd = nn.KLDivLoss(reduction='batchmean')
     
     if args.distributed:
-        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
+        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
         model_without_ddp = model.module
         
     
@@ -445,9 +438,7 @@ def main(args):
             train_sampler.set_epoch(epoch)
     
         # 2024.03.20 @hslee
-        # train_one_epoch(model, optimizer, data_loader, device, epoch, args.print_freq, scaler)
         train_one_epoch_twobackward(model, criterion_kd, optimizer, data_loader, device, epoch, args, scaler, skip_cfg_basenet, skip_cfg_supernet, subpath_alpha=args.subpath_alpha)
-
         lr_scheduler.step()
         
         # evaluate after every epoch

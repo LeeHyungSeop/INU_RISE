@@ -188,7 +188,10 @@ class RetinaNetClassificationHead(nn.Module):
                 / max(1, num_foreground)
             )
 
-        return _sum(losses) / len(targets)
+        # 2024.03.23 @hslee
+        loss = _sum(losses) / len(targets)
+        print(f"Classification Focal Loss : {loss}")
+        return loss
 
     def forward(self, x):
         # type: (List[Tensor]) -> Tensor
@@ -300,7 +303,9 @@ class RetinaNetRegressionHead(nn.Module):
                 / max(1, num_foreground)
             )
 
-        return _sum(losses) / max(1, len(targets))
+        loss = _sum(losses) / max(1, len(targets))
+        print(f"Regression Loss : {loss}")
+        return loss
 
     def forward(self, x):
         # type: (List[Tensor]) -> Tensor
@@ -493,6 +498,8 @@ class RetinaNet(nn.Module):
 
     # 2024.03.20 @hslee (add skip=None)
     def forward(self, images, targets=None, skip=None):
+        self.skip = skip
+        print(f"self.skip : {self.skip}")
         if self.training:
             if targets is None:
                 torch._assert(False, "targets should not be none when in training mode")
@@ -506,11 +513,9 @@ class RetinaNet(nn.Module):
                     )
 
         # get the original image sizes
-        original_image_sizes: List[Tuple[int, int]] = []
-        print(f"original_image_sizes : {original_image_sizes}")
+        original_image_sizes: List[Tuple[int, int]] = [] 
         # images : batch size
         for img in images:
-            print(f"img.shape : {img.shape}")
             val = img.shape[-2:]
             torch._assert(
                 len(val) == 2,
@@ -520,11 +525,11 @@ class RetinaNet(nn.Module):
 
         # transform the input to (800, 1216) 2024.03.20 @hslee
         images, targets = self.transform(images, targets) 
-        print(f"images.tensors.shape : {images.tensors.shape}") # images.tensors.shape : torch.Size([16, 3, 800, 1216])
-        print(f"len(targets) : {len(targets)}") # 16
-        print(f"targets[0] : \
-            {targets[0]['boxes'].shape}, {targets[0]['labels'].shape}, {targets[0]['masks'].shape} \
-        ")
+        # print(f"images.tensors.shape : {images.tensors.shape}") # images.tensors.shape : torch.Size([16, 3, 800, 1216])
+        # print(f"len(targets) : {len(targets)}") # 16
+        # print(f"targets[0] : \
+            # {targets[0]['boxes'].shape}, {targets[0]['labels'].shape}, {targets[0]['masks'].shape} \
+        # ")
             # targets[0] : torch.Size([1, 4]), torch.Size([1]), torch.Size([1, 800, 1066])
 
         # Check for degenerate boxes
@@ -544,7 +549,7 @@ class RetinaNet(nn.Module):
                     )
 
         
-        print(f"self.backbone : {self.backbone}")
+        # print(f"self.backbone : {self.backbone}")
         # get the features from the backbone
         # RuntimeError: mat1 and mat2 shapes cannot be multiplied (32768x1 and 2048x1000)
         # [2024-03-22 15:16:58,517] torch.distributed.elastic.multiprocessing.api: \
@@ -559,14 +564,14 @@ class RetinaNet(nn.Module):
 
         # compute the retinanet heads outputs using the features
         head_outputs = self.head(features)
-        print(f"head_outputs['cls_logits'].shape : {head_outputs['cls_logits'].shape}") 
+        # print(f"head_outputs['cls_logits'].shape : {head_outputs['cls_logits'].shape}") 
             # (bs, 190323, 91)
-        print(f"head_outputs['bbox_regression'].shape : {head_outputs['bbox_regression'].shape}")
+        # print(f"head_outputs['bbox_regression'].shape : {head_outputs['bbox_regression'].shape}")
             # (bs, 190323, 4)
         
         # create the set of anchors
         anchors = self.anchor_generator(images, features)
-        print(f"len(anchors) : {len(anchors)}")
+        # print(f"len(anchors) : {len(anchors)}")
             # len(anchors) : {bs}
 
 
@@ -575,15 +580,18 @@ class RetinaNet(nn.Module):
         ## ----------------------------------------------------------------------------------------------------------------
         losses = {}
         detections: List[Dict[str, Tensor]] = []
+        print(f"self.skip = {self.skip}")
         if self.training:
-            print(f"self.training : {self.training}")
-            print(f"len(targets) : {len(targets)}") # {bs}
+            # print(f"len(targets) : {len(targets)}") # {bs}
             
             if targets is None:
                 torch._assert(False, "targets should not be none when in training mode")
             else:
                 # compute the losses
                 losses = self.compute_loss(targets, head_outputs, anchors)
+                
+            return losses['classification'], losses['bbox_regression'], head_outputs['cls_logits'], head_outputs['bbox_regression']
+        
         else:
             # recover level sizes
             num_anchors_per_level = [x.size(2) * x.size(3) for x in features]
@@ -609,9 +617,8 @@ class RetinaNet(nn.Module):
                 warnings.warn("RetinaNet always returns a (Losses, Detections) tuple in scripting")
                 self._has_warned = True
             return losses, detections
-        print(f"losses : {losses}")
-        print(f"detections : {detections}")
-        return self.eager_outputs(losses, detections)
+        
+        
     ## ----------------------------------------------------------------------------------------------------------------
 
 
@@ -704,11 +711,11 @@ def retinanet_resnet50_adn_fpn(
         # backbone, trainable_backbone_layers, returned_layers=[2, 3, 4], extra_blocks=LastLevelP6P7(256, 256)
         backbone, trainable_backbone_layers, returned_layers=[2, 3, 4], extra_blocks=LastLevelP6P7(256, 256)
     )
-    print(f"backbone : {backbone}")
+    # print(f"backbone : {backbone}")
     
     model = RetinaNet(backbone, num_classes, num_skippable_stages=num_skippable_stages, **kwargs)
 
-    print(f"weights : {weights}")
+    # print(f"weights : {weights}")
     if weights is not None:
         model.load_state_dict(weights.get_state_dict(progress=progress, check_hash=True))
         if weights == RetinaNet_ResNet50_FPN_Weights.COCO_V1:
