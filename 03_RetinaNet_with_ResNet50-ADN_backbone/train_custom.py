@@ -30,7 +30,7 @@ import torchvision
 import utils
 from torch import nn
 from coco_utils import get_coco
-from engine import evaluate, train_one_epoch
+from engine import evaluate
 from group_by_aspect_ratio import create_aspect_ratio_groups, GroupedBatchSampler
 from torchvision.transforms import InterpolationMode
 from transforms import SimpleCopyPaste
@@ -219,66 +219,86 @@ def train_one_epoch_twobackward(
         # 2024.03.23 @hslee
         optimizer.zero_grad()
         with torch.cuda.amp.autocast(enabled=scaler is not None):
+            ''' 2024.03.23 @hslee
+            model() returns following :
+                - key : 'classification', value : (loss_cls, cls_logits)
+                    loss_cls : scalar tensor
+                    cls_logits : tensor of shape (N, C, H, W)
+                - key : 'bbox_regression', value : (loss_bbox, bbox_reg)
+                    loss_cls : scalar tensor
+                    cls_logits : tensor of shape (N, C, H, W)
+                    
+                print(f"loss_dict_super.keys() : {loss_dict_super.keys()}") 
+                    # dict_keys(['classification', 'bbox_regression'])
+                print(f"loss_dict_super['classification'][0] : {loss_dict_super['classification'][0]}") 
+                    # cls_loss : ['classification'][0]
+                print(f"loss_dict_super['classification'][1].shape : {loss_dict_super['classification'][1].shape}") 
+                    # cls_logits : ['classification'][1]
+                print(f"loss_dict_super['bbox_regression'][0] : {loss_dict_super['bbox_regression'][0]}") 
+                    # bbox_loss : ['bbox_regression'][0]
+                print(f"loss_dict_super['bbox_regression'][1].shape : {loss_dict_super['bbox_regression'][1].shape}") 
+                    # bbox_reg : ['bbox_regression'][1]                    
+            '''
+            
             # 1. forward pass for super_net
-            focalloss_cls_super, loss_bbox_super, out_cls_super, out_bbox_super \
-                = model(images, targets, skip=skip_cfg_supernet) # if training 
-            print(f"focalloss_cls_super : {focalloss_cls_super}")
-            print(f"loss_bbox_super : {loss_bbox_super}")
-            print(f"out_cls_super.shape : {out_cls_super.shape}") 
-            print(f"out_bbox_super.shape : {out_bbox_super.shape}")
-            
-            # losses_super = alpha * (sum(loss for loss in loss_super.values()))
-            loss_super = alpha * (focalloss_cls_super + loss_bbox_super)            
-            print(f"loss_super : {loss_super}")
+            loss_dict_super = model(images, targets, skip=skip_cfg_supernet) # if training 
+                # super_net loss
+            losses_super = loss_dict_super['classification'][0] + loss_dict_super['bbox_regression'][0]
+            print(f"losses_super : {losses_super}")
+            loss_dict_reduced_super = utils.reduce_dict(loss_dict_super)
+            losses_reduced_super = loss_dict_reduced_super['classification'][0] + loss_dict_reduced_super['bbox_regression'][0]
+            loss_value_super = losses_reduced_super.item()
+            if not math.isfinite(loss_value_super):
+                print(f"Loss is {loss_value_super}, stopping training")
+                sys.exit(1)
         
-            with torch.cuda.amp.autocast(enabled=False):
-                if scaler is not None:
-                    scaler.scale(loss_super).backward()
-                else : 
-                    loss_super.backward()
-            
             # 2. forward pass for base_net
-            focalloss_cls_base, loss_bbox_base, out_cls_base, out_bbox_base \
-                = model(images, targets, skip=skip_cfg_basenet) # if training 
-            print(f"focalloss_cls_base : {focalloss_cls_base}")
-            print(f"loss_bbox_base : {loss_bbox_base}")
-            print(f"out_cls_base.shape : {out_cls_base.shape}") 
-            print(f"out_bbox_base.shape : {out_bbox_base.shape}")
+            loss_dict_base = model(images, targets, skip=skip_cfg_basenet) # if training 
+                # base_net loss (KL divergence)
+            losses_base = loss_dict_base['classification'][0] + loss_dict_base['bbox_regression'][0]
+            print(f"losses_base : {losses_base}")
+            loss_dict_reduced_base = utils.reduce_dict(loss_dict_base)
+            losses_reduced_base = loss_dict_reduced_base['classification'][0] + loss_dict_reduced_base['bbox_regression'][0]
+            loss_value_base = losses_reduced_base.item()
+            if not math.isfinite(loss_value_base):
+                print(f"Loss is {loss_value_base}, stopping training")
+                sys.exit(1)
             
-            # T = 4  # temperature
+            out_cls_super = loss_dict_super['classification'][1] # supernet's classification logits
+            out_bbox_super = loss_dict_super['bbox_regression'][1] # supernet's bbox regression logits
+            out_cls_base = loss_dict_base['classification'][1] # basenet's classification logits
+            out_bbox_base = loss_dict_base['bbox_regression'][1] # basenet's bbox regression logits
+            
             loss_cls_kd = criterion_kd(F.log_softmax(out_cls_super, dim=1), F.softmax(out_cls_base.clone().detach(), dim=1))
             loss_bbox_kd = criterion_kd(F.log_softmax(out_bbox_super, dim=-1), F.softmax(out_bbox_base.clone().detach(), dim=-1))
             print(f"loss_cls_kd : {loss_cls_kd}")
             print(f"loss_bbox_kd : {loss_bbox_kd}")
             
-            loss_base = (1. - alpha) * (0.5 * loss_cls_kd + 5.0 * loss_bbox_kd)
-            print(f"loss_base : {loss_base}")
-            if not math.isfinite(loss_base):
-                print(f"Loss is {loss_base}, stopping training")
+            losses_base = loss_cls_kd + loss_bbox_kd
+            if not math.isfinite(losses_base):
+                print(f"Loss is {losses_base}, stopping training")
                 sys.exit(1)
-
-        if scaler is not None:
-            scaler.scale(loss_base).backward() 
-            if args.clip_grad_norm is not None:
-                # we should unscale the gradients of optimizer's assigned params if do gradient clipping
-                scaler.unscale_(optimizer)
-                nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad_norm)
-            scaler.step(optimizer)
-            scaler.update()
-        else:
-            loss_base.backward()
-            if args.clip_grad_norm is not None:
-                nn.utils.clip_grad_norm_(model.parameters(), args.clip_grad_norm)
-            optimizer.step()
-        
+            
+            # backward with final loss
+            loss = alpha * losses_super + (1 - alpha) * losses_base
+            with torch.cuda.amp.autocast(enabled=False):
+                if scaler is not None:
+                    scaler.scale(loss).backward()
+                else : 
+                    loss.backward()
+                    print(f"loss.backward()")
+                    optimizer.step()
+                
         if lr_scheduler is not None:
             lr_scheduler.step()
-            
-        metric_logger.update(loss=loss_super, **loss_super)
-        metric_logger.update(loss=loss_base, **loss_base)
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
-
+        metric_logger.update(loss_super=losses_reduced_super, **loss_dict_reduced_super)
+        metric_logger.update(loss_base=losses_reduced_base, **loss_dict_reduced_base)
+        metric_logger.update(loss=loss)
+        
     return metric_logger
+            
+
 
 def main(args):
     if args.backend.lower() == "tv_tensor" and not args.use_v2:

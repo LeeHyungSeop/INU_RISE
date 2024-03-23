@@ -33,10 +33,10 @@ class IntermediateLayerGetter(nn.Module):
         out = {}
         num_layer = 0
         
-        print(f"self.model.name_children() : {self.model.named_children()}")
+        # print(f"self.model.name_children() : {self.model.named_children()}")
         
         for name, module in self.model.named_children():
-            print(f"name: {name}")
+            # print(f"name: {name}")
             
             if ('_skippable' in name):
                 print(f"skip: {name}: skip={skip[num_layer]}, size:{x.size()}")
@@ -54,11 +54,11 @@ class IntermediateLayerGetter(nn.Module):
             if name in self.return_layers:
                 # intermedia_features[name] = torch.squeeze(torch.nn.functional.adaptive_avg_pool2d(x,(1,1)))
                 intermedia_features[name] = x
-                print(f"intermedia_features[name].shape: {intermedia_features[name].shape}")
+                # print(f"intermedia_features[name].shape: {intermedia_features[name].shape}")
 
         out['model_out'] = x                  # last layer output
         out['features'] = intermedia_features # feature map extraction for lateral connections
-        print(f"out['model_out'].shape: {out['model_out'].shape}")
+        # print(f"out['model_out'].shape: {out['model_out'].shape}")
 
         return out
 

@@ -105,7 +105,7 @@ class FeaturePyramidNetwork(nn.Module):
                     nn.init.constant_(m.bias, 0)
 
         
-        print(f"extra_blocks: {extra_blocks}")
+        # print(f"extra_blocks: {extra_blocks}")
         # if extra_blocks is not None:
         #     if not isinstance(extra_blocks, ExtraFPNBlock):
         #         raise TypeError(f"extra_blocks should be of type ExtraFPNBlock not {type(extra_blocks)}")
@@ -199,7 +199,7 @@ class FeaturePyramidNetwork(nn.Module):
         results.append(self.get_result_from_layer_blocks(last_inner, -1))
 
         for idx in range(len(x) - 1, -1, -1):
-            print(f"x[idx].shape : {x[idx].shape}") #
+            # print(f"x[idx].shape : {x[idx].shape}") 
             inner_lateral = self.get_result_from_inner_blocks(x[idx], idx)
             feat_shape = inner_lateral.shape[-2:]
             inner_top_down = F.interpolate(last_inner, size=feat_shape, mode="nearest")

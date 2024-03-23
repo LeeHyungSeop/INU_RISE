@@ -190,8 +190,7 @@ class RetinaNetClassificationHead(nn.Module):
 
         # 2024.03.23 @hslee
         loss = _sum(losses) / len(targets)
-        print(f"Classification Focal Loss : {loss}")
-        return loss
+        return loss, cls_logits # add cls_logits for KL-Divergence Loss
 
     def forward(self, x):
         # type: (List[Tensor]) -> Tensor
@@ -303,9 +302,9 @@ class RetinaNetRegressionHead(nn.Module):
                 / max(1, num_foreground)
             )
 
+        # 2024.03.23 @hslee
         loss = _sum(losses) / max(1, len(targets))
-        print(f"Regression Loss : {loss}")
-        return loss
+        return loss, bbox_regression # add bbox_regression for KL-Divergence Loss
 
     def forward(self, x):
         # type: (List[Tensor]) -> Tensor
@@ -499,7 +498,7 @@ class RetinaNet(nn.Module):
     # 2024.03.20 @hslee (add skip=None)
     def forward(self, images, targets=None, skip=None):
         self.skip = skip
-        print(f"self.skip : {self.skip}")
+        # print(f"self.skip : {self.skip}")
         if self.training:
             if targets is None:
                 torch._assert(False, "targets should not be none when in training mode")
@@ -580,17 +579,14 @@ class RetinaNet(nn.Module):
         ## ----------------------------------------------------------------------------------------------------------------
         losses = {}
         detections: List[Dict[str, Tensor]] = []
-        print(f"self.skip = {self.skip}")
+        # print(f"self.skip = {self.skip}")
         if self.training:
-            # print(f"len(targets) : {len(targets)}") # {bs}
-            
             if targets is None:
                 torch._assert(False, "targets should not be none when in training mode")
             else:
                 # compute the losses
                 losses = self.compute_loss(targets, head_outputs, anchors)
-                
-            return losses['classification'], losses['bbox_regression'], head_outputs['cls_logits'], head_outputs['bbox_regression']
+                # print(f"losses : {losses}")
         
         else:
             # recover level sizes
@@ -617,6 +613,11 @@ class RetinaNet(nn.Module):
                 warnings.warn("RetinaNet always returns a (Losses, Detections) tuple in scripting")
                 self._has_warned = True
             return losses, detections
+        
+        # 2024.03.23 @hslee
+        # return losses in training mode, detections in eval mode
+        # but losses include detections for KL-Divergence Loss
+        return self.eager_outputs(losses, detections) 
         
         
     ## ----------------------------------------------------------------------------------------------------------------

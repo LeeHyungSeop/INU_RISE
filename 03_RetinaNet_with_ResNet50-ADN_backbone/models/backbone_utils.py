@@ -61,7 +61,7 @@ class BackboneWithADNFPN(nn.Module):
 
     # 2024.03.22 @hslee
     def forward(self, x: Tensor, skip=None) -> Dict[str, Tensor]:
-        print(f"skip: {skip}") 
+        # print(f"skip: {skip}") 
         # print(f"x.shape: {x.shape}")  # (bs, 3, 800, 1216)
         
         # 1. IntermediateLayerGetter() -> backbone's body
@@ -128,7 +128,7 @@ def _resnet50_fpn_extractor(
     norm_layer: Optional[Callable[..., nn.Module]] = None,
 ) -> BackboneWithADNFPN:
     
-    print(f"extra_blocks: {extra_blocks}") 
+    # print(f"extra_blocks: {extra_blocks}") 
 
     # select layers that won't be frozen
     if trainable_layers < 0 or trainable_layers > 5:
