@@ -303,6 +303,8 @@ def main(args):
         evaluate(model, data_loader_test, device=device)
         return
 
+    print(f"model : {model}")
+        
     print("Start training")
     start_time = time.time()
     for epoch in range(args.start_epoch, args.epochs):

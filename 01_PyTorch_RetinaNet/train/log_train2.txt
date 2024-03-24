@@ -1,0 +1,436 @@
+| distributed init (rank 0): env://
+Namespace(data_path='/home/hslee/Desktop/Datasets/COCO', dataset='coco', model='retinanet_resnet50_fpn', device='cuda', batch_size=4, epochs=26, workers=8, opt='sgd', lr=0.01, momentum=0.9, weight_decay=0.0001, norm_weight_decay=None, lr_scheduler='multisteplr', lr_step_size=8, lr_steps=[16, 22], lr_gamma=0.1, print_freq=20, output_dir='.', resume='', start_epoch=0, aspect_ratio_group_factor=3, rpn_score_thresh=None, trainable_backbone_layers=None, data_augmentation='hflip', sync_bn=False, test_only=False, use_deterministic_algorithms=False, world_size=1, dist_url='env://', weights=None, weights_backbone='ResNet50_Weights.IMAGENET1K_V1', amp=False, use_copypaste=False, backend='pil', use_v2=False, rank=0, gpu=0, distributed=True, dist_backend='nccl')
+Loading data
+loading annotations into memory...
+Done (t=7.05s)
+creating index...
+index created!
+loading annotations into memory...
+Done (t=0.22s)
+creating index...
+index created!
+Creating data loaders
+Using [0, 0.5, 0.6299605249474365, 0.7937005259840997, 1.0, 1.259921049894873, 1.5874010519681991, 2.0, inf] as bins for aspect ratio quantization
+Count of instances per bin: [  104   982 24236  2332  8225 74466  5763  1158]
+Creating model
+model : DistributedDataParallel(
+  (module): RetinaNet(
+    (backbone): BackboneWithFPN(
+      (body): IntermediateLayerGetter(
+        (conv1): Conv2d(3, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
+        (bn1): FrozenBatchNorm2d(64, eps=1e-05)
+        (relu): ReLU(inplace=True)
+        (maxpool): MaxPool2d(kernel_size=3, stride=2, padding=1, dilation=1, ceil_mode=False)
+        (layer1): Sequential(
+          (0): Bottleneck(
+            (conv1): Conv2d(64, 64, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn1): FrozenBatchNorm2d(64, eps=1e-05)
+            (conv2): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+            (bn2): FrozenBatchNorm2d(64, eps=1e-05)
+            (conv3): Conv2d(64, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn3): FrozenBatchNorm2d(256, eps=1e-05)
+            (relu): ReLU(inplace=True)
+            (downsample): Sequential(
+              (0): Conv2d(64, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (1): FrozenBatchNorm2d(256, eps=1e-05)
+            )
+          )
+          (1): Bottleneck(
+            (conv1): Conv2d(256, 64, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn1): FrozenBatchNorm2d(64, eps=1e-05)
+            (conv2): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+            (bn2): FrozenBatchNorm2d(64, eps=1e-05)
+            (conv3): Conv2d(64, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn3): FrozenBatchNorm2d(256, eps=1e-05)
+            (relu): ReLU(inplace=True)
+          )
+          (2): Bottleneck(
+            (conv1): Conv2d(256, 64, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn1): FrozenBatchNorm2d(64, eps=1e-05)
+            (conv2): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+            (bn2): FrozenBatchNorm2d(64, eps=1e-05)
+            (conv3): Conv2d(64, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn3): FrozenBatchNorm2d(256, eps=1e-05)
+            (relu): ReLU(inplace=True)
+          )
+        )
+        (layer2): Sequential(
+          (0): Bottleneck(
+            (conv1): Conv2d(256, 128, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn1): FrozenBatchNorm2d(128, eps=1e-05)
+            (conv2): Conv2d(128, 128, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
+            (bn2): FrozenBatchNorm2d(128, eps=1e-05)
+            (conv3): Conv2d(128, 512, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn3): FrozenBatchNorm2d(512, eps=1e-05)
+            (relu): ReLU(inplace=True)
+            (downsample): Sequential(
+              (0): Conv2d(256, 512, kernel_size=(1, 1), stride=(2, 2), bias=False)
+              (1): FrozenBatchNorm2d(512, eps=1e-05)
+            )
+          )
+          (1): Bottleneck(
+            (conv1): Conv2d(512, 128, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn1): FrozenBatchNorm2d(128, eps=1e-05)
+            (conv2): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+            (bn2): FrozenBatchNorm2d(128, eps=1e-05)
+            (conv3): Conv2d(128, 512, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn3): FrozenBatchNorm2d(512, eps=1e-05)
+            (relu): ReLU(inplace=True)
+          )
+          (2): Bottleneck(
+            (conv1): Conv2d(512, 128, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn1): FrozenBatchNorm2d(128, eps=1e-05)
+            (conv2): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+            (bn2): FrozenBatchNorm2d(128, eps=1e-05)
+            (conv3): Conv2d(128, 512, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn3): FrozenBatchNorm2d(512, eps=1e-05)
+            (relu): ReLU(inplace=True)
+          )
+          (3): Bottleneck(
+            (conv1): Conv2d(512, 128, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn1): FrozenBatchNorm2d(128, eps=1e-05)
+            (conv2): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+            (bn2): FrozenBatchNorm2d(128, eps=1e-05)
+            (conv3): Conv2d(128, 512, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn3): FrozenBatchNorm2d(512, eps=1e-05)
+            (relu): ReLU(inplace=True)
+          )
+        )
+        (layer3): Sequential(
+          (0): Bottleneck(
+            (conv1): Conv2d(512, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn1): FrozenBatchNorm2d(256, eps=1e-05)
+            (conv2): Conv2d(256, 256, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
+            (bn2): FrozenBatchNorm2d(256, eps=1e-05)
+            (conv3): Conv2d(256, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn3): FrozenBatchNorm2d(1024, eps=1e-05)
+            (relu): ReLU(inplace=True)
+            (downsample): Sequential(
+              (0): Conv2d(512, 1024, kernel_size=(1, 1), stride=(2, 2), bias=False)
+              (1): FrozenBatchNorm2d(1024, eps=1e-05)
+            )
+          )
+          (1): Bottleneck(
+            (conv1): Conv2d(1024, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn1): FrozenBatchNorm2d(256, eps=1e-05)
+            (conv2): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+            (bn2): FrozenBatchNorm2d(256, eps=1e-05)
+            (conv3): Conv2d(256, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn3): FrozenBatchNorm2d(1024, eps=1e-05)
+            (relu): ReLU(inplace=True)
+          )
+          (2): Bottleneck(
+            (conv1): Conv2d(1024, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn1): FrozenBatchNorm2d(256, eps=1e-05)
+            (conv2): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+            (bn2): FrozenBatchNorm2d(256, eps=1e-05)
+            (conv3): Conv2d(256, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn3): FrozenBatchNorm2d(1024, eps=1e-05)
+            (relu): ReLU(inplace=True)
+          )
+          (3): Bottleneck(
+            (conv1): Conv2d(1024, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn1): FrozenBatchNorm2d(256, eps=1e-05)
+            (conv2): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+            (bn2): FrozenBatchNorm2d(256, eps=1e-05)
+            (conv3): Conv2d(256, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn3): FrozenBatchNorm2d(1024, eps=1e-05)
+            (relu): ReLU(inplace=True)
+          )
+          (4): Bottleneck(
+            (conv1): Conv2d(1024, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn1): FrozenBatchNorm2d(256, eps=1e-05)
+            (conv2): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+            (bn2): FrozenBatchNorm2d(256, eps=1e-05)
+            (conv3): Conv2d(256, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn3): FrozenBatchNorm2d(1024, eps=1e-05)
+            (relu): ReLU(inplace=True)
+          )
+          (5): Bottleneck(
+            (conv1): Conv2d(1024, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn1): FrozenBatchNorm2d(256, eps=1e-05)
+            (conv2): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+            (bn2): FrozenBatchNorm2d(256, eps=1e-05)
+            (conv3): Conv2d(256, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn3): FrozenBatchNorm2d(1024, eps=1e-05)
+            (relu): ReLU(inplace=True)
+          )
+        )
+        (layer4): Sequential(
+          (0): Bottleneck(
+            (conv1): Conv2d(1024, 512, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn1): FrozenBatchNorm2d(512, eps=1e-05)
+            (conv2): Conv2d(512, 512, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
+            (bn2): FrozenBatchNorm2d(512, eps=1e-05)
+            (conv3): Conv2d(512, 2048, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn3): FrozenBatchNorm2d(2048, eps=1e-05)
+            (relu): ReLU(inplace=True)
+            (downsample): Sequential(
+              (0): Conv2d(1024, 2048, kernel_size=(1, 1), stride=(2, 2), bias=False)
+              (1): FrozenBatchNorm2d(2048, eps=1e-05)
+            )
+          )
+          (1): Bottleneck(
+            (conv1): Conv2d(2048, 512, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn1): FrozenBatchNorm2d(512, eps=1e-05)
+            (conv2): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+            (bn2): FrozenBatchNorm2d(512, eps=1e-05)
+            (conv3): Conv2d(512, 2048, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn3): FrozenBatchNorm2d(2048, eps=1e-05)
+            (relu): ReLU(inplace=True)
+          )
+          (2): Bottleneck(
+            (conv1): Conv2d(2048, 512, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn1): FrozenBatchNorm2d(512, eps=1e-05)
+            (conv2): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+            (bn2): FrozenBatchNorm2d(512, eps=1e-05)
+            (conv3): Conv2d(512, 2048, kernel_size=(1, 1), stride=(1, 1), bias=False)
+            (bn3): FrozenBatchNorm2d(2048, eps=1e-05)
+            (relu): ReLU(inplace=True)
+          )
+        )
+      )
+      (fpn): FeaturePyramidNetwork(
+        (inner_blocks): ModuleList(
+          (0): Conv2dNormActivation(
+            (0): Conv2d(512, 256, kernel_size=(1, 1), stride=(1, 1))
+          )
+          (1): Conv2dNormActivation(
+            (0): Conv2d(1024, 256, kernel_size=(1, 1), stride=(1, 1))
+          )
+          (2): Conv2dNormActivation(
+            (0): Conv2d(2048, 256, kernel_size=(1, 1), stride=(1, 1))
+          )
+        )
+        (layer_blocks): ModuleList(
+          (0-2): 3 x Conv2dNormActivation(
+            (0): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+          )
+        )
+        (extra_blocks): LastLevelP6P7(
+          (p6): Conv2d(256, 256, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))
+          (p7): Conv2d(256, 256, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1))
+        )
+      )
+    )
+    (anchor_generator): AnchorGenerator()
+    (head): RetinaNetHead(
+      (classification_head): RetinaNetClassificationHead(
+        (conv): Sequential(
+          (0): Conv2dNormActivation(
+            (0): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+            (1): ReLU(inplace=True)
+          )
+          (1): Conv2dNormActivation(
+            (0): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+            (1): ReLU(inplace=True)
+          )
+          (2): Conv2dNormActivation(
+            (0): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+            (1): ReLU(inplace=True)
+          )
+          (3): Conv2dNormActivation(
+            (0): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+            (1): ReLU(inplace=True)
+          )
+        )
+        (cls_logits): Conv2d(256, 819, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      )
+      (regression_head): RetinaNetRegressionHead(
+        (conv): Sequential(
+          (0): Conv2dNormActivation(
+            (0): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+            (1): ReLU(inplace=True)
+          )
+          (1): Conv2dNormActivation(
+            (0): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+            (1): ReLU(inplace=True)
+          )
+          (2): Conv2dNormActivation(
+            (0): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+            (1): ReLU(inplace=True)
+          )
+          (3): Conv2dNormActivation(
+            (0): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+            (1): ReLU(inplace=True)
+          )
+        )
+        (bbox_reg): Conv2d(256, 36, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+      )
+    )
+    (transform): GeneralizedRCNNTransform(
+        Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        Resize(min_size=(800,), max_size=1333, mode='bilinear')
+    )
+  )
+)
+Start training
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+Epoch: [0]  [    0/29316]  eta: 11:06:23  lr: 0.000020  loss: 2.0753 (2.0753)  classification: 1.3921 (1.3921)  bbox_regression: 0.6832 (0.6832)  time: 1.3639  data: 0.5483  max mem: 5573
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+Epoch: [0]  [   20/29316]  eta: 2:52:42  lr: 0.000220  loss: 2.0091 (2.0362)  classification: 1.3060 (1.3130)  bbox_regression: 0.6824 (0.7232)  time: 0.3032  data: 0.0056  max mem: 6363
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+Epoch: [0]  [   40/29316]  eta: 2:40:04  lr: 0.000420  loss: 1.9489 (2.0162)  classification: 1.2731 (1.3099)  bbox_regression: 0.6759 (0.7063)  time: 0.3011  data: 0.0049  max mem: 6381
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+Epoch: [0]  [   60/29316]  eta: 2:35:17  lr: 0.000619  loss: 1.9650 (2.0217)  classification: 1.2529 (1.2989)  bbox_regression: 0.6731 (0.7228)  time: 0.2988  data: 0.0050  max mem: 6381
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')
+Epoch: [0]  [   80/29316]  eta: 2:33:04  lr: 0.000819  loss: 1.9453 (2.0091)  classification: 1.2605 (1.2931)  bbox_regression: 0.6770 (0.7159)  time: 0.3009  data: 0.0050  max mem: 6389
+model.module.backbone.body.conv1.weight[0][0][0]: tensor([ 0.0133,  0.0147, -0.0154, -0.0230, -0.0409, -0.0430, -0.0708],
+       device='cuda:0')

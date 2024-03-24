@@ -401,7 +401,7 @@ def main(args):
     if args.model_ema:
         # Decay adjustment that aims to keep the decay independent from other hyper-parameters originally proposed at:
         # https://github.com/facebookresearch/pycls/blob/f8cd9627/pycls/core/net.py#L123
-        #
+        
         # total_ema_updates = (Dataset_size / n_GPUs) * epochs / (batch_size_per_gpu * EMA_steps)
         # We consider constant = Dataset_size for a given dataset/setup and ommit it. Thus:
         # adjust = 1 / total_ema_updates ~= n_GPUs * batch_size_per_gpu * EMA_steps / epochs
@@ -442,7 +442,7 @@ def main(args):
 
     skip_cfg_basenet = [True for _ in range(num_skippable_stages)]
     skip_cfg_supernet = [False for _ in range(num_skippable_stages)]
-
+    
     print("Start training")
     start_time = time.time()
     for epoch in range(args.start_epoch, args.epochs):

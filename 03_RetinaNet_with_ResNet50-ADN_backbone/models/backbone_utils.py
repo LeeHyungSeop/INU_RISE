@@ -9,7 +9,6 @@ from .resnet import resnet50, resnet101
 from ._api import _get_enum_from_fn, WeightsEnum
 from ._utils import handle_legacy_interface, IntermediateLayerGetter
 
-
 # 2024.03.21 @hslee
 class BackboneWithADNFPN(nn.Module):
     """
@@ -75,10 +74,7 @@ class BackboneWithADNFPN(nn.Module):
             
         # 2. FeaturePyramidNetwork() -> backbones's fpn
         x = self.fpn(x['features']) # x: Dict[str, Tensor]
-            
-        
         return x
-
 
 @handle_legacy_interface(
     weights=(
@@ -130,6 +126,7 @@ def _resnet50_fpn_extractor(
     
     # print(f"extra_blocks: {extra_blocks}") 
 
+    # making sure all `forward` function outputs participate in calculating loss. 
     # select layers that won't be frozen
     if trainable_layers < 0 or trainable_layers > 5:
         raise ValueError(f"Trainable layers should be in the range [0,5], got {trainable_layers}")
@@ -138,7 +135,7 @@ def _resnet50_fpn_extractor(
         layers_to_train.append("bn1")
     for name, parameter in backbone.named_parameters():
         if all([not name.startswith(layer) for layer in layers_to_train]):
-            parameter.requires_grad_(False)
+            parameter.requires_grad_(False)    
 
     if extra_blocks is None:
         extra_blocks = LastLevelMaxPool()
@@ -181,5 +178,7 @@ def _validate_trainable_layers(
     if trainable_backbone_layers < 0 or trainable_backbone_layers > max_value:
         raise ValueError(
             f"Trainable backbone layers should be in the range [0,{max_value}], got {trainable_backbone_layers} "
-        )
+        )  
+        
+    print(f"trainable_backbone_layers : {trainable_backbone_layers}")
     return trainable_backbone_layers

@@ -30,12 +30,12 @@ import torchvision
 import utils
 from torch import nn
 from coco_utils import get_coco
-from engine import evaluate
+from engine import evaluate, custom_train_one_epoch_onebackward, custom_train_one_epoch_twobackward
 from group_by_aspect_ratio import create_aspect_ratio_groups, GroupedBatchSampler
 from torchvision.transforms import InterpolationMode
 from transforms import SimpleCopyPaste
 import models
-import torch.nn.functional as F
+torch.autograd.set_detect_anomaly(True)
 
 def copypaste_collate_fn(batch):
     copypaste = SimpleCopyPaste(blending=True, resize_interpolation=InterpolationMode.BILINEAR)
@@ -182,124 +182,6 @@ def get_args_parser(add_help=True):
 
     return parser
 
-
-
-def train_one_epoch_twobackward(
-    model, 
-    criterion_kd, 
-    optimizer, 
-    data_loader, 
-    device, 
-    epoch, 
-    args,  
-    scaler=None,
-    skip_cfg_basenet=None,
-    skip_cfg_supernet=None,
-    subpath_alpha=0.5,
-    ): 
-    model.train()
-    metric_logger = utils.MetricLogger(delimiter="  ")
-    metric_logger.add_meter("lr", utils.SmoothedValue(window_size=1, fmt="{value:.6f}"))
-
-    lr_scheduler = None
-    if epoch == 0:
-        warmup_factor = 1.0 / 1000
-        warmup_iters = min(1000, len(data_loader) - 1)
-
-        lr_scheduler = torch.optim.lr_scheduler.LinearLR(
-            optimizer, start_factor=warmup_factor, total_iters=warmup_iters
-        )
-
-    header = f"Epoch: [{epoch}]"
-    for i, (images, targets) in enumerate(metric_logger.log_every(data_loader, args.print_freq, header)):
-        images = list(image.to(device) for image in images)
-        targets = [{k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in t.items()} for t in targets]
-        alpha = subpath_alpha
-        
-        # 2024.03.23 @hslee
-        optimizer.zero_grad()
-        with torch.cuda.amp.autocast(enabled=scaler is not None):
-            ''' 2024.03.23 @hslee
-            model() returns following :
-                - key : 'classification', value : (loss_cls, cls_logits)
-                    loss_cls : scalar tensor
-                    cls_logits : tensor of shape (N, C, H, W)
-                - key : 'bbox_regression', value : (loss_bbox, bbox_reg)
-                    loss_cls : scalar tensor
-                    cls_logits : tensor of shape (N, C, H, W)
-                    
-                print(f"loss_dict_super.keys() : {loss_dict_super.keys()}") 
-                    # dict_keys(['classification', 'bbox_regression'])
-                print(f"loss_dict_super['classification'][0] : {loss_dict_super['classification'][0]}") 
-                    # cls_loss : ['classification'][0]
-                print(f"loss_dict_super['classification'][1].shape : {loss_dict_super['classification'][1].shape}") 
-                    # cls_logits : ['classification'][1]
-                print(f"loss_dict_super['bbox_regression'][0] : {loss_dict_super['bbox_regression'][0]}") 
-                    # bbox_loss : ['bbox_regression'][0]
-                print(f"loss_dict_super['bbox_regression'][1].shape : {loss_dict_super['bbox_regression'][1].shape}") 
-                    # bbox_reg : ['bbox_regression'][1]                    
-            '''
-            
-            # 1. forward pass for super_net
-            loss_dict_super = model(images, targets, skip=skip_cfg_supernet) # if training 
-                # super_net loss
-            losses_super = loss_dict_super['classification'][0] + loss_dict_super['bbox_regression'][0]
-            print(f"losses_super : {losses_super}")
-            loss_dict_reduced_super = utils.reduce_dict(loss_dict_super)
-            losses_reduced_super = loss_dict_reduced_super['classification'][0] + loss_dict_reduced_super['bbox_regression'][0]
-            loss_value_super = losses_reduced_super.item()
-            if not math.isfinite(loss_value_super):
-                print(f"Loss is {loss_value_super}, stopping training")
-                sys.exit(1)
-        
-            # 2. forward pass for base_net
-            loss_dict_base = model(images, targets, skip=skip_cfg_basenet) # if training 
-                # base_net loss (KL divergence)
-            losses_base = loss_dict_base['classification'][0] + loss_dict_base['bbox_regression'][0]
-            print(f"losses_base : {losses_base}")
-            loss_dict_reduced_base = utils.reduce_dict(loss_dict_base)
-            losses_reduced_base = loss_dict_reduced_base['classification'][0] + loss_dict_reduced_base['bbox_regression'][0]
-            loss_value_base = losses_reduced_base.item()
-            if not math.isfinite(loss_value_base):
-                print(f"Loss is {loss_value_base}, stopping training")
-                sys.exit(1)
-            
-            out_cls_super = loss_dict_super['classification'][1] # supernet's classification logits
-            out_bbox_super = loss_dict_super['bbox_regression'][1] # supernet's bbox regression logits
-            out_cls_base = loss_dict_base['classification'][1] # basenet's classification logits
-            out_bbox_base = loss_dict_base['bbox_regression'][1] # basenet's bbox regression logits
-            
-            loss_cls_kd = criterion_kd(F.log_softmax(out_cls_super, dim=1), F.softmax(out_cls_base.clone().detach(), dim=1))
-            loss_bbox_kd = criterion_kd(F.log_softmax(out_bbox_super, dim=-1), F.softmax(out_bbox_base.clone().detach(), dim=-1))
-            print(f"loss_cls_kd : {loss_cls_kd}")
-            print(f"loss_bbox_kd : {loss_bbox_kd}")
-            
-            losses_base = loss_cls_kd + loss_bbox_kd
-            if not math.isfinite(losses_base):
-                print(f"Loss is {losses_base}, stopping training")
-                sys.exit(1)
-            
-            # backward with final loss
-            loss = alpha * losses_super + (1 - alpha) * losses_base
-            with torch.cuda.amp.autocast(enabled=False):
-                if scaler is not None:
-                    scaler.scale(loss).backward()
-                else : 
-                    loss.backward()
-                    print(f"loss.backward()")
-                    optimizer.step()
-                
-        if lr_scheduler is not None:
-            lr_scheduler.step()
-        metric_logger.update(lr=optimizer.param_groups[0]["lr"])
-        metric_logger.update(loss_super=losses_reduced_super, **loss_dict_reduced_super)
-        metric_logger.update(loss_base=losses_reduced_base, **loss_dict_reduced_base)
-        metric_logger.update(loss=loss)
-        
-    return metric_logger
-            
-
-
 def main(args):
     if args.backend.lower() == "tv_tensor" and not args.use_v2:
         raise ValueError("Use --use-v2 if you want to use the tv_tensor backend.")
@@ -366,28 +248,24 @@ def main(args):
     
     # 2024.03.20 hslee
     # have to modify this part to use new model --------------------------------------------------------------------------------------
-    # if args.model not in ("retinanet_resnet50_fpn", "swin_t", "vit_b_16", "vit_b_32", "efficientnet_v2_s", "efficientnet_b2"):
+    # if args.model not in ("retinanet_resnet50_adn_fpn", "swin_t", "vit_b_16", "vit_b_32", "efficientnet_v2_s", "efficientnet_b2"):
     if args.model not in models.__dict__.keys():
         print(f"{args.model} is not supported")
         sys.exit()
     model = models.__dict__[args.model]()
     model.to(device)
-    model_without_ddp = model
-    print(f"model : {model}")
-    
     # --------------------------------------------------------------------------------------------------------------------------------      
-
-    if args.distributed and args.sync_bn:
-        model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
 
     # 2024.03.21 @hslee
     criterion_kd = nn.KLDivLoss(reduction='batchmean')
     
+    if args.distributed and args.sync_bn:
+        model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
+    model_without_ddp = model
     if args.distributed:
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
         model_without_ddp = model.module
-        
-    
+    print(f"model : {model}")
 
     if args.norm_weight_decay is None:
         parameters = [p for p in model.parameters() if p.requires_grad]
@@ -458,7 +336,9 @@ def main(args):
             train_sampler.set_epoch(epoch)
     
         # 2024.03.20 @hslee
-        train_one_epoch_twobackward(model, criterion_kd, optimizer, data_loader, device, epoch, args, scaler, skip_cfg_basenet, skip_cfg_supernet, subpath_alpha=args.subpath_alpha)
+        custom_train_one_epoch_onebackward(model, criterion_kd, optimizer, data_loader, device, epoch, args, scaler, skip_cfg_basenet, skip_cfg_supernet, subpath_alpha=args.subpath_alpha)
+        # custom_train_one_epoch_twobackward(model, criterion_kd, optimizer, data_loader, device, epoch, args, scaler, skip_cfg_basenet, skip_cfg_supernet, subpath_alpha=args.subpath_alpha)
+        
         lr_scheduler.step()
         
         # evaluate after every epoch
@@ -502,7 +382,7 @@ if __name__ == "__main__":
 '''
     torchrun --nproc_per_node=1 train_custom.py --dataset coco --data-path=/home/hslee/Desktop/Datasets/COCO \
     --model retinanet_resnet50_adn_fpn --epochs 26 \
-    --batch-size 16 --workers 8 --lr-steps 16 22 \
+    --batch-size 4 --workers 8 --lr-steps 16 22 \
     --aspect-ratio-group-factor 3 --lr 0.01 \
     --weights-backbone /home/hslee/Desktop/Embedded_AI/INU_4-1/RISE/02_AdaptiveDepthNetwork/pretrained/resnet50_adn_model_145.pth \
     2>&1 | tee ./logs/log_train_custom.txt

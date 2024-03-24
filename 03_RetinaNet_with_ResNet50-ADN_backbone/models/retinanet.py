@@ -496,6 +496,7 @@ class RetinaNet(nn.Module):
         return detections
 
     # 2024.03.20 @hslee (add skip=None)
+    # making sure all `forward` function outputs participate in calculating loss. 
     def forward(self, images, targets=None, skip=None):
         self.skip = skip
         # print(f"self.skip : {self.skip}")
@@ -683,22 +684,21 @@ def retinanet_resnet50_adn_fpn(
 
     # 2024.03.20 @hslee
     weights = RetinaNet_ResNet50_FPN_Weights.verify(weights)
+    
+    # set `forward` function outputs participate in calculating loss. 
     # weights_backbone = torch.load('/home/hslee/INU_RISE/02_AdaptiveDepthNetwork/pretrained/resnet50_adn_model_145.pth')
     weights_backbone = torch.load('/home/hslee/Desktop/Embedded_AI/INU_4-1/RISE/02_AdaptiveDepthNetwork/pretrained/resnet50_adn_model_145.pth')
-
+    
+    
     if weights is not None:
         weights_backbone = None
         num_classes = _ovewrite_value_param("num_classes", num_classes, len(weights.meta["categories"]))
     elif num_classes is None:
         num_classes = 91
-
-    is_trained = weights is not None or weights_backbone is not None
     
     # 2024.03.21 @hslee
-    # (is_trained=True, trainable_backbone_layers=None, max_value=5, default_value=3)
+    is_trained = weights is not None or weights_backbone is not None
     trainable_backbone_layers = _validate_trainable_layers(is_trained, trainable_backbone_layers, 5, 3)
-    # trainable_backbone_layers = None -> 3
-    
     norm_layer = misc_nn_ops.FrozenBatchNorm2d if is_trained else nn.BatchNorm2d
     
     
@@ -708,13 +708,10 @@ def retinanet_resnet50_adn_fpn(
     # skip P2 because it generates too many anchors (according to their paper)
     backbone = _resnet50_fpn_extractor(
         # 2024.03.21 @hslee
-        # TypeError: extra_blocks should be of type ExtraFPNBlock not <class 'torchvision.ops.feature_pyramid_network.LastLevelP6P7'>
-        # backbone, trainable_backbone_layers, returned_layers=[2, 3, 4], extra_blocks=LastLevelP6P7(256, 256)
         backbone, trainable_backbone_layers, returned_layers=[2, 3, 4], extra_blocks=LastLevelP6P7(256, 256)
     )
-    # print(f"backbone : {backbone}")
-    
     model = RetinaNet(backbone, num_classes, num_skippable_stages=num_skippable_stages, **kwargs)
+    
 
     # print(f"weights : {weights}")
     if weights is not None:
