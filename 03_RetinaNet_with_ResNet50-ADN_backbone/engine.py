@@ -131,24 +131,27 @@ def custom_train_one_epoch_onebackward(
         
             # 2. forward pass for base_net
             loss_dict_base = model(images, targets, skip=skip_cfg_basenet) # if training 
+            optimizer.zero_grad()
+            loss_dict_base = model(images, targets, skip=skip_cfg_basenet) # if training 
+            real_losses_base = loss_dict_base['classification'][0] + loss_dict_base['bbox_regression'][0]
             # base_net loss (KL divergence)
             # cls shape  : (bs, 190323, 91)
             # bbox shape : (bs, 190323, 4)
-            out_cls_super = loss_dict_super['classification'][1] # supernet's classification logits
-            out_bbox_super = loss_dict_super['bbox_regression'][1] # supernet's bbox regression logits
-            out_cls_base = loss_dict_base['classification'][1] # basenet's classification logits
-            out_bbox_base = loss_dict_base['bbox_regression'][1] # basenet's bbox regression logits
+            out_cls_super = torch.clamp(loss_dict_super['classification'][1], min=1e-8)
+            out_bbox_super = torch.clamp(loss_dict_super['bbox_regression'][1], min=1e-8)
+            out_cls_base = torch.clamp(loss_dict_base['classification'][1], min=1e-8)
+            out_bbox_base = torch.clamp(loss_dict_base['bbox_regression'][1], min=1e-8)
             
             T = 4
             loss_cls_kd = criterion_kd(F.log_softmax(out_cls_super.clone().detach()/T, dim=-1), F.softmax(out_cls_base/T, dim=-1)) * T*T
             loss_bbox_kd = criterion_kd(F.log_softmax(out_bbox_super.clone().detach()/T, dim=-1), F.softmax(out_bbox_base/T, dim=-1)) * T*T
-            print(f"loss_cls_kd : {loss_cls_kd}")
-            print(f"loss_bbox_kd : {loss_bbox_kd}")
+            # print(f"loss_cls_kd : {loss_cls_kd}")
+            # print(f"loss_bbox_kd : {loss_bbox_kd}")
             losses_base = loss_cls_kd + loss_bbox_kd
             losses_base = (1 - alpha) * losses_base
-            print(f"losses_base : {losses_base}")
+            # print(f"losses_base : {losses_base}")
             if not math.isfinite(losses_base):
-                print(f"Loss is {losses_base}, stopping training")
+                # print(f"Loss is {losses_base}, stopping training")
                 sys.exit(1)
             
             # backward with final loss
@@ -171,7 +174,8 @@ def custom_train_one_epoch_onebackward(
             lr_scheduler.step()
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
         metric_logger.update(loss_super = losses_super)
-        metric_logger.update(loss_base = losses_base)
+        metric_logger.update(real_losses_base = real_losses_base)
+        metric_logger.update(KLDiv_loss_base = losses_base)
         metric_logger.update(loss=loss)
         
     return metric_logger
@@ -239,6 +243,10 @@ def custom_train_one_epoch_twobackward(
             losses_super = alpha * losses_super
             # print(f"losses_super : {losses_super}")
             # backward with super_net loss
+            
+            if not math.isfinite(losses_super):
+                print(f"losses_super is {losses_super}, stopping training")
+                sys.exit(1)
             with torch.cuda.amp.autocast(enabled=False):
                 if scaler is not None:
                     scaler.scale(losses_super).backward()
@@ -249,22 +257,28 @@ def custom_train_one_epoch_twobackward(
             # 2. forward pass for base_net
             optimizer.zero_grad()
             loss_dict_base = model(images, targets, skip=skip_cfg_basenet) # if training 
+            real_losses_base = loss_dict_base['classification'][0] + loss_dict_base['bbox_regression'][0]
+            # print(f"real_losses_base : {real_losses_base}")
             # base_net loss (KL divergence)
             # cls shape  : (bs, 190323, 91)
             # bbox shape : (bs, 190323, 4)
-            out_cls_super = loss_dict_super['classification'][1]
-            out_bbox_super = loss_dict_super['bbox_regression'][1]
-            out_cls_base = loss_dict_base['classification'][1] # basenet's classification logits
-            out_bbox_base = loss_dict_base['bbox_regression'][1] # basenet's bbox regression logits
+            out_cls_super = torch.clamp(loss_dict_super['classification'][1], min=1e-8)
+            out_bbox_super = torch.clamp(loss_dict_super['bbox_regression'][1], min=1e-8)
+            out_cls_base = torch.clamp(loss_dict_base['classification'][1], min=1e-8)
+            out_bbox_base = torch.clamp(loss_dict_base['bbox_regression'][1], min=1e-8)
             
             T = 4
             loss_cls_kd = criterion_kd(F.log_softmax(out_cls_super.clone().detach()/T, dim=-1), F.softmax(out_cls_base/T, dim=-1)) * T*T
             loss_bbox_kd = criterion_kd(F.log_softmax(out_bbox_super.clone().detach()/T, dim=-1), F.softmax(out_bbox_base/T, dim=-1)) * T*T
-            print(f"loss_cls_kd : {loss_cls_kd}")
-            print(f"loss_bbox_kd : {loss_bbox_kd}")
+            # print(f"loss_cls_kd : {loss_cls_kd}")
+            # print(f"loss_bbox_kd : {loss_bbox_kd}")
             losses_base = loss_cls_kd + loss_bbox_kd
             losses_base = (1 - alpha) * losses_base
-            print(f"losses_base : {losses_base}")
+            # print(f"(new)losses_base : {losses_base}")
+            
+            if not math.isfinite(losses_base):
+                print(f"losses_base is {losses_base}, stopping training")
+                sys.exit(1)
                 
             # backward with base_net loss
             with torch.cuda.amp.autocast(enabled=False):
@@ -280,7 +294,8 @@ def custom_train_one_epoch_twobackward(
             
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
         metric_logger.update(loss_super = losses_super)
-        metric_logger.update(loss_base = losses_base)
+        metric_logger.update(real_losses_base = real_losses_base)
+        metric_logger.update(KLDiv_loss_base = losses_base)
         
     return metric_logger
 
@@ -305,7 +320,7 @@ def evaluate(model, data_loader, device, skip=None):
     cpu_device = torch.device("cpu")
     model.eval()
     metric_logger = utils.MetricLogger(delimiter="  ")
-    header = "Test:"
+    header = f"[subnet]{skip} Test:"
 
     coco = get_coco_api_from_dataset(data_loader.dataset)
     iou_types = _get_iou_types(model)

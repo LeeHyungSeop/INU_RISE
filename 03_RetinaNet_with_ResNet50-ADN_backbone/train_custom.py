@@ -323,10 +323,10 @@ def main(args):
     # 2024.03.20 @hslee
     num_skippable_stages = model_without_ddp.num_skippable_stages
     print(f"num_skippable_stages : {num_skippable_stages}")
-    skip_cfg_basenet = [True for _ in range(num_skippable_stages)]
     skip_cfg_supernet = [False for _ in range(num_skippable_stages)]
-    print(f"skip_cfg_basenet : {skip_cfg_basenet}")
+    skip_cfg_basenet = [True for _ in range(num_skippable_stages)]
     print(f"skip_cfg_supernet : {skip_cfg_supernet}")
+    print(f"skip_cfg_basenet : {skip_cfg_basenet}")
 
     print("Start training")
     start_time = time.time()
@@ -341,8 +341,8 @@ def main(args):
         lr_scheduler.step()
         
         # evaluate after every epoch
-        evaluate(model, data_loader_test, device=device, skip=skip_cfg_basenet)
         evaluate(model, data_loader_test, device=device, skip=skip_cfg_supernet)
+        evaluate(model, data_loader_test, device=device, skip=skip_cfg_basenet)
         
         if args.output_dir:
             checkpoint = {
