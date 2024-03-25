@@ -59,8 +59,124 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, sc
 
     return metric_logger
 
-
 def custom_train_one_epoch_onebackward(
+    model, 
+    criterion_kd, 
+    optimizer, 
+    data_loader, 
+    device, 
+    epoch, 
+    args,  
+    scaler=None,
+    skip_cfg_basenet=None,
+    skip_cfg_supernet=None,
+    subpath_alpha=0.5,
+    ): 
+    model.train()
+    metric_logger = utils.MetricLogger(delimiter="  ")
+    metric_logger.add_meter("lr", utils.SmoothedValue(window_size=1, fmt="{value:.6f}"))
+
+    lr_scheduler = None
+    if epoch == 0:
+        warmup_factor = 1.0 / 1000
+        warmup_iters = min(1000, len(data_loader) - 1)
+
+        lr_scheduler = torch.optim.lr_scheduler.LinearLR(
+            optimizer, start_factor=warmup_factor, total_iters=warmup_iters
+        )
+
+    header = f"Epoch: [{epoch}]"
+    for i, (images, targets) in enumerate(metric_logger.log_every(data_loader, args.print_freq, header)):
+        images = list(image.to(device) for image in images)
+        targets = [{k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in t.items()} for t in targets]
+        alpha = subpath_alpha
+        
+        # 2024.03.23 @hslee
+        optimizer.zero_grad()
+        with torch.cuda.amp.autocast(enabled=scaler is not None):
+            ''' 2024.03.23 @hslee
+            model() returns following :
+                - key : 'classification', value : (loss_cls, cls_logits)
+                    loss_cls : scalar tensor
+                    cls_logits : tensor of shape (bs, 190323, 91)
+                - key : 'bbox_regression', value : (loss_bbox, bbox_reg)
+                    loss_bbox : scalar tensor
+                    bbox_logits : tensor of shape (bs, 190323, 4)
+                    
+                print(f"loss_dict_super.keys() : {loss_dict_super.keys()}") 
+                    # dict_keys(['classification', 'bbox_regression'])
+                print(f"loss_dict_super['classification'][0] : {loss_dict_super['classification'][0]}") 
+                    # cls_loss : ['classification'][0]
+                print(f"loss_dict_super['classification'][1].shape : {loss_dict_super['classification'][1].shape}") 
+                    # cls_logits : ['classification'][1]
+                print(f"loss_dict_super['bbox_regression'][0] : {loss_dict_super['bbox_regression'][0]}") 
+                    # bbox_loss : ['bbox_regression'][0]
+                print(f"loss_dict_super['bbox_regression'][1].shape : {loss_dict_super['bbox_regression'][1].shape}") 
+                    # bbox_reg : ['bbox_regression'][1]                    
+            '''
+            
+            # 1. forward pass for super_net
+            loss_dict_super = model(images, targets, skip=skip_cfg_supernet) # if training 
+            # super_net loss
+            losses_super = loss_dict_super['classification'][0] + loss_dict_super['bbox_regression'][0]
+            losses_super = alpha * losses_super
+            # print(f"losses_super : {losses_super}")
+            loss_dict_reduced_super = utils.reduce_dict(loss_dict_super)
+            losses_reduced_super = loss_dict_reduced_super['classification'][0] + loss_dict_reduced_super['bbox_regression'][0]
+            loss_value_super = losses_reduced_super.item()
+            if not math.isfinite(loss_value_super):
+                print(f"Loss is {loss_value_super}, stopping training")
+                sys.exit(1)
+        
+        
+            # 2. forward pass for base_net
+            loss_dict_base = model(images, targets, skip=skip_cfg_basenet) # if training 
+            # base_net loss (KL divergence)
+            # cls shape  : (bs, 190323, 91)
+            # bbox shape : (bs, 190323, 4)
+            out_cls_super = loss_dict_super['classification'][1] # supernet's classification logits
+            out_bbox_super = loss_dict_super['bbox_regression'][1] # supernet's bbox regression logits
+            out_cls_base = loss_dict_base['classification'][1] # basenet's classification logits
+            out_bbox_base = loss_dict_base['bbox_regression'][1] # basenet's bbox regression logits
+            
+            T = 4
+            loss_cls_kd = criterion_kd(F.log_softmax(out_cls_super.clone().detach()/T, dim=-1), F.softmax(out_cls_base/T, dim=-1)) * T*T
+            loss_bbox_kd = criterion_kd(F.log_softmax(out_bbox_super.clone().detach()/T, dim=-1), F.softmax(out_bbox_base/T, dim=-1)) * T*T
+            print(f"loss_cls_kd : {loss_cls_kd}")
+            print(f"loss_bbox_kd : {loss_bbox_kd}")
+            losses_base = loss_cls_kd + loss_bbox_kd
+            losses_base = (1 - alpha) * losses_base
+            print(f"losses_base : {losses_base}")
+            if not math.isfinite(losses_base):
+                print(f"Loss is {losses_base}, stopping training")
+                sys.exit(1)
+            
+            # backward with final loss
+            loss = losses_super.item() + losses_base
+            # print(f"(final) loss : {loss}")
+            with torch.cuda.amp.autocast(enabled=False):
+                if scaler is not None:
+                    scaler.scale(loss).backward()
+                else : 
+                    loss.backward() 
+                    ''' 2023.03.24 @hslee
+                    RuntimeError: Expected to mark a variable ready only once. 
+                        This error is caused by one of the following reasons: 
+                            1) Use of a module parameter outside the `forward` function.
+                            2) Reused parameters in multiple reentrant backward passes.
+                    '''                    
+                    optimizer.step()
+                
+        if lr_scheduler is not None:
+            lr_scheduler.step()
+        metric_logger.update(lr=optimizer.param_groups[0]["lr"])
+        metric_logger.update(loss_super = losses_super)
+        metric_logger.update(loss_base = losses_base)
+        metric_logger.update(loss=loss)
+        
+    return metric_logger
+          
+def custom_train_one_epoch_twobackward(
     model, 
     criterion_kd, 
     optimizer, 
@@ -118,190 +234,53 @@ def custom_train_one_epoch_onebackward(
             
             # 1. forward pass for super_net
             loss_dict_super = model(images, targets, skip=skip_cfg_supernet) # if training 
-                # super_net loss
-            losses_super = loss_dict_super['classification'][0] + loss_dict_super['bbox_regression'][0]
-            print(f"losses_super : {losses_super}")
-            loss_dict_reduced_super = utils.reduce_dict(loss_dict_super)
-            losses_reduced_super = loss_dict_reduced_super['classification'][0] + loss_dict_reduced_super['bbox_regression'][0]
-            loss_value_super = losses_reduced_super.item()
-            if not math.isfinite(loss_value_super):
-                print(f"Loss is {loss_value_super}, stopping training")
-                sys.exit(1)
-        
-        
-            # 2. forward pass for base_net
-            loss_dict_base = model(images, targets, skip=skip_cfg_basenet) # if training 
-                # base_net loss (KL divergence)
-            losses_base = loss_dict_base['classification'][0] + loss_dict_base['bbox_regression'][0]
-            loss_dict_reduced_base = utils.reduce_dict(loss_dict_base)
-            losses_reduced_base = loss_dict_reduced_base['classification'][0] + loss_dict_reduced_base['bbox_regression'][0]
-            loss_value_base = losses_reduced_base.item()
-            if not math.isfinite(loss_value_base):
-                print(f"Loss is {loss_value_base}, stopping training")
-                sys.exit(1)
-            
-            out_cls_super = loss_dict_super['classification'][1] # supernet's classification logits
-            out_bbox_super = loss_dict_super['bbox_regression'][1] # supernet's bbox regression logits
-            out_cls_base = loss_dict_base['classification'][1] # basenet's classification logits
-            out_bbox_base = loss_dict_base['bbox_regression'][1] # basenet's bbox regression logits
-            
-            loss_cls_kd = criterion_kd(F.log_softmax(out_cls_super, dim=1), F.softmax(out_cls_base.clone().detach(), dim=1))
-            loss_bbox_kd = criterion_kd(F.log_softmax(out_bbox_super, dim=-1), F.softmax(out_bbox_base.clone().detach(), dim=-1))
-            print(f"loss_cls_kd : {loss_cls_kd}")
-            print(f"loss_bbox_kd : {loss_bbox_kd}")
-            losses_base = loss_cls_kd + loss_bbox_kd
-            print(f"losses_base : {losses_base}")
-            if not math.isfinite(losses_base):
-                print(f"Loss is {losses_base}, stopping training")
-                sys.exit(1)
-            
-            # backward with final loss
-            loss = (alpha * losses_super + (1 - alpha) * losses_base.item())
-            print(f"(final) loss : {loss}")
-            with torch.cuda.amp.autocast(enabled=False):
-                if scaler is not None:
-                    scaler.scale(loss).backward()
-                else : 
-                    loss.backward() 
-                    ''' 2023.03.24 @hslee
-                    RuntimeError: Expected to mark a variable ready only once. 
-                        This error is caused by one of the following reasons: 
-                            1) Use of a module parameter outside the `forward` function.
-                            2) Reused parameters in multiple reentrant backward passes.
-                    '''                    
-                    optimizer.step()
-                
-        if lr_scheduler is not None:
-            lr_scheduler.step()
-        metric_logger.update(lr=optimizer.param_groups[0]["lr"])
-        metric_logger.update(loss_super = losses_super)
-        metric_logger.update(loss_base = losses_base)
-        metric_logger.update(loss=loss)
-        
-    return metric_logger
-          
-def custom_train_one_epoch_twobackward(
-    model, 
-    criterion_kd, 
-    optimizer, 
-    data_loader, 
-    device, 
-    epoch, 
-    args,  
-    scaler=None,
-    skip_cfg_basenet=None,
-    skip_cfg_supernet=None,
-    subpath_alpha=0.5,
-    ): 
-    model.train()
-    metric_logger = utils.MetricLogger(delimiter="  ")
-    metric_logger.add_meter("lr", utils.SmoothedValue(window_size=1, fmt="{value:.6f}"))
-
-    lr_scheduler = None
-    if epoch == 0:
-        warmup_factor = 1.0 / 1000
-        warmup_iters = min(1000, len(data_loader) - 1)
-
-        lr_scheduler = torch.optim.lr_scheduler.LinearLR(
-            optimizer, start_factor=warmup_factor, total_iters=warmup_iters
-        )
-
-    header = f"Epoch: [{epoch}]"
-    for i, (images, targets) in enumerate(metric_logger.log_every(data_loader, args.print_freq, header)):
-        images = list(image.to(device) for image in images)
-        targets = [{k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in t.items()} for t in targets]
-        alpha = subpath_alpha
-        
-        # 2024.03.23 @hslee
-        with torch.cuda.amp.autocast(enabled=scaler is not None):
-            ''' 2024.03.23 @hslee
-            model() returns following :
-                - key : 'classification', value : (loss_cls, cls_logits)
-                    loss_cls : scalar tensor
-                    cls_logits : tensor of shape (N, C, H, W)
-                - key : 'bbox_regression', value : (loss_bbox, bbox_reg)
-                    loss_cls : scalar tensor
-                    cls_logits : tensor of shape (N, C, H, W)
-                    
-                print(f"loss_dict_super.keys() : {loss_dict_super.keys()}") 
-                    # dict_keys(['classification', 'bbox_regression'])
-                print(f"loss_dict_super['classification'][0] : {loss_dict_super['classification'][0]}") 
-                    # cls_loss : ['classification'][0]
-                print(f"loss_dict_super['classification'][1].shape : {loss_dict_super['classification'][1].shape}") 
-                    # cls_logits : ['classification'][1]
-                print(f"loss_dict_super['bbox_regression'][0] : {loss_dict_super['bbox_regression'][0]}") 
-                    # bbox_loss : ['bbox_regression'][0]
-                print(f"loss_dict_super['bbox_regression'][1].shape : {loss_dict_super['bbox_regression'][1].shape}") 
-                    # bbox_reg : ['bbox_regression'][1]                    
-            '''
-            
-            # 1. forward pass for super_net
-            loss_dict_super = model(images, targets, skip=skip_cfg_supernet) # if training 
-                # super_net loss
+            # super_net loss
             losses_super = loss_dict_super['classification'][0] + loss_dict_super['bbox_regression'][0]
             losses_super = alpha * losses_super
-            print(f"losses_super : {losses_super}")
-            loss_dict_reduced_super = utils.reduce_dict(loss_dict_super)
-            losses_reduced_super = loss_dict_reduced_super['classification'][0] + loss_dict_reduced_super['bbox_regression'][0]
-            loss_value_super = losses_reduced_super.item()
-            if not math.isfinite(loss_value_super):
-                print(f"Loss is {loss_value_super}, stopping training")
-                sys.exit(1)
+            # print(f"losses_super : {losses_super}")
             # backward with super_net loss
             with torch.cuda.amp.autocast(enabled=False):
                 if scaler is not None:
                     scaler.scale(losses_super).backward()
                 else:
-                    optimizer.zero_grad()
-                    losses_super.backward(retain_graph=True)
+                    losses_super.backward()
                     optimizer.step()
-                    print(f"losses_super backwarded!")
         
             # 2. forward pass for base_net
             optimizer.zero_grad()
             loss_dict_base = model(images, targets, skip=skip_cfg_basenet) # if training 
             # base_net loss (KL divergence)
-            losses_base = loss_dict_base['classification'][0] + loss_dict_base['bbox_regression'][0]
-            loss_dict_reduced_base = utils.reduce_dict(loss_dict_base)
-            losses_reduced_base = loss_dict_reduced_base['classification'][0] + loss_dict_reduced_base['bbox_regression'][0]
-            loss_value_base = losses_reduced_base.item()
-            if not math.isfinite(loss_value_base):
-                print(f"Loss is {loss_value_base}, stopping training")
-                sys.exit(1)
+            # cls shape  : (bs, 190323, 91)
+            # bbox shape : (bs, 190323, 4)
             out_cls_super = loss_dict_super['classification'][1]
             out_bbox_super = loss_dict_super['bbox_regression'][1]
             out_cls_base = loss_dict_base['classification'][1] # basenet's classification logits
             out_bbox_base = loss_dict_base['bbox_regression'][1] # basenet's bbox regression logits
             
-            loss_cls_kd = criterion_kd(F.log_softmax(out_cls_super, dim=1), F.softmax(out_cls_base.clone().detach(), dim=1))
-            loss_bbox_kd = criterion_kd(F.log_softmax(out_bbox_super, dim=-1), F.softmax(out_bbox_base.clone().detach(), dim=-1))
+            T = 4
+            loss_cls_kd = criterion_kd(F.log_softmax(out_cls_super.clone().detach()/T, dim=-1), F.softmax(out_cls_base/T, dim=-1)) * T*T
+            loss_bbox_kd = criterion_kd(F.log_softmax(out_bbox_super.clone().detach()/T, dim=-1), F.softmax(out_bbox_base/T, dim=-1)) * T*T
             print(f"loss_cls_kd : {loss_cls_kd}")
             print(f"loss_bbox_kd : {loss_bbox_kd}")
             losses_base = loss_cls_kd + loss_bbox_kd
             losses_base = (1 - alpha) * losses_base
             print(f"losses_base : {losses_base}")
-            if not math.isfinite(loss_value_base):
-                print(f"Loss is {loss_value_base}, stopping training")
-                sys.exit(1)
+                
             # backward with base_net loss
             with torch.cuda.amp.autocast(enabled=False):
                 if scaler is not None:
                     scaler.scale(losses_base).backward()
                 else:
-                    '''
-                    RuntimeError: Trying to backward through the graph a second time 
-                    (or directly access saved tensors after they have already been freed)
-                    '''
                     losses_base.backward()
                     optimizer.step()
-                    
                     
         
         if lr_scheduler is not None:
             lr_scheduler.step()
+            
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
-        metric_logger.update(loss_super=losses_reduced_super, **loss_dict_reduced_super)
-        metric_logger.update(loss_base=losses_reduced_base, **loss_dict_reduced_base)
+        metric_logger.update(loss_super = losses_super)
+        metric_logger.update(loss_base = losses_base)
         
     return metric_logger
 

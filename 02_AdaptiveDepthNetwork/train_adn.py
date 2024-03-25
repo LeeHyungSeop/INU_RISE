@@ -618,10 +618,20 @@ if __name__ == "__main__":
     main(args)
 
 
-'''
+
+''' ampere
 torchrun --nproc_per_node=4 train_adn.py --model resnet50 --batch-size 128 \
     --lr-scheduler multisteplr --lr-multi-steps 60 100 140 --epochs 150 \
     --norm-weight-decay 0 --bias-weight-decay 0 \
     --output-dir /home/hslee/INU_RISE/02_AdaptiveDepthNetwork/checkpoint \
     --data-path /media/data/ILSVRC2012/ 2>&1 | tee ./logs/log_resnet50_adn.txt
 '''
+
+''' Desktop
+torchrun --nproc_per_node=1 train_adn.py --model resnet50 --batch-size 8 \
+    --lr-scheduler multisteplr --lr-multi-steps 60 100 140 --epochs 150 \
+    --norm-weight-decay 0 --bias-weight-decay 0 \
+    --output-dir /home/hslee/INU_RISE/02_AdaptiveDepthNetwork/checkpoint \
+    --data-path /home/hslee/Desktop/Datasets/ILSVRC2012_ImageNet 2>&1 | tee ./logs/log_resnet50_adn.txt
+'''
+

@@ -21,7 +21,6 @@ import datetime
 import os
 import time
 import os,sys
-import math
 
 import presets
 import torch
@@ -336,8 +335,8 @@ def main(args):
             train_sampler.set_epoch(epoch)
     
         # 2024.03.20 @hslee
-        custom_train_one_epoch_onebackward(model, criterion_kd, optimizer, data_loader, device, epoch, args, scaler, skip_cfg_basenet, skip_cfg_supernet, subpath_alpha=args.subpath_alpha)
-        # custom_train_one_epoch_twobackward(model, criterion_kd, optimizer, data_loader, device, epoch, args, scaler, skip_cfg_basenet, skip_cfg_supernet, subpath_alpha=args.subpath_alpha)
+        # custom_train_one_epoch_onebackward(model, criterion_kd, optimizer, data_loader, device, epoch, args, scaler, skip_cfg_basenet, skip_cfg_supernet, subpath_alpha=args.subpath_alpha)
+        custom_train_one_epoch_twobackward(model, criterion_kd, optimizer, data_loader, device, epoch, args, scaler, skip_cfg_basenet, skip_cfg_supernet, subpath_alpha=args.subpath_alpha)
         
         lr_scheduler.step()
         
@@ -385,5 +384,5 @@ if __name__ == "__main__":
     --batch-size 4 --workers 8 --lr-steps 16 22 \
     --aspect-ratio-group-factor 3 --lr 0.01 \
     --weights-backbone /home/hslee/Desktop/Embedded_AI/INU_4-1/RISE/02_AdaptiveDepthNetwork/pretrained/resnet50_adn_model_145.pth \
-    2>&1 | tee ./logs/log_train_custom.txt
+    2>&1 | tee ./logs/log_train_test.txt
 '''
