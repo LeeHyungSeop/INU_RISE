@@ -381,8 +381,8 @@ if __name__ == "__main__":
 '''
     torchrun --nproc_per_node=1 train_custom.py --dataset coco --data-path=/home/hslee/Desktop/Datasets/COCO \
     --model retinanet_resnet50_adn_fpn --epochs 26 \
-    --batch-size 4 --workers 8 --lr-steps 16 22 \
+    --batch-size 8 --workers 8 --lr-steps 16 22 \
     --aspect-ratio-group-factor 3 --lr 0.01 \
     --weights-backbone /home/hslee/Desktop/Embedded_AI/INU_4-1/RISE/02_AdaptiveDepthNetwork/pretrained/resnet50_adn_model_145.pth \
-    2>&1 | tee ./logs/log_train_test.txt
+    2>&1 | tee ./logs/log_train_custom.txt
 '''
