@@ -81,6 +81,7 @@ def train_one_epoch_twobackward(
             # this is used for res50 experiments 
             # print(f"outputs_skip_topK.shape : {outputs_skip_topK.shape}") # (bs, 500)
             loss_softmax_kd = criterion_kd(F.log_softmax(outputs_skip_topK[:,0:500]/T, dim=1), F.softmax(outputs_full_topK[:,0:500].clone().detach()/T, dim=1)) * T*T
+            print(f"loss_softmax_kd : {loss_softmax_kd}")
                     
             # final loss
             loss_kd = (1. - alpha) * loss_softmax_kd

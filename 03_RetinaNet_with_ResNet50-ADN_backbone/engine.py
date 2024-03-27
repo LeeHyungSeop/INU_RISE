@@ -137,26 +137,28 @@ def custom_train_one_epoch_onebackward(
             # base_net loss (KL divergence)
             # cls shape  : (bs, 190323, 91)
             # bbox shape : (bs, 190323, 4)
-            out_cls_super = torch.clamp(loss_dict_super['classification'][1], min=1e-8)
-            out_bbox_super = torch.clamp(loss_dict_super['bbox_regression'][1], min=1e-8)
-            out_cls_base = torch.clamp(loss_dict_base['classification'][1], min=1e-8)
-            out_bbox_base = torch.clamp(loss_dict_base['bbox_regression'][1], min=1e-8)
+            out_cls_super = loss_dict_super['classification'][1]
+            out_cls_base = loss_dict_base['classification'][1]
+            out_bbox_super = loss_dict_super['bbox_regression'][1]
+            out_bbox_base = loss_dict_base['bbox_regression'][1]
             
             T = 4
-            loss_cls_kd = criterion_kd(F.log_softmax(out_cls_base/T, dim=1), F.softmax(out_cls_super.clone().detach()/T, dim=1)) * T*T
-            loss_bbox_kd = criterion_kd(F.log_softmax(out_bbox_base/T, dim=1), F.softmax(out_bbox_super.clone().detach()/T, dim=1)) * T*T
-            # print(f"loss_cls_kd : {loss_cls_kd}")
-            # print(f"loss_bbox_kd : {loss_bbox_kd}")
+            loss_cls_kd = criterion_kd(F.log_softmax(out_cls_base/T, dim=2), F.softmax(out_cls_super.clone().detach()/T, dim=2)) * T*T
+            loss_bbox_kd = criterion_kd(F.log_softmax(out_bbox_base/T, dim=2), F.softmax(out_bbox_super.clone().detach()/T, dim=2)) * T*T
+            print(f"loss_cls_kd : {loss_cls_kd}")
+            print(f"loss_bbox_kd : {loss_bbox_kd}")
             losses_base = loss_cls_kd + loss_bbox_kd
             losses_base = (1 - alpha) * losses_base
-            # print(f"losses_base : {losses_base}")
+            print(f"losses_base : {losses_base}")
             if not math.isfinite(losses_base):
                 print(f"Loss is {losses_base}, stopping training")
+                # print value of parameter
+                print(f"parameter : {model.parameters()}")
                 sys.exit(1)
             
             # backward with final loss
             loss = losses_super.item() + losses_base
-            # print(f"(final) loss : {loss}")
+            print(f"(final) loss : {loss}")
             with torch.cuda.amp.autocast(enabled=False):
                 if scaler is not None:
                     scaler.scale(loss).backward()
@@ -240,12 +242,17 @@ def custom_train_one_epoch_twobackward(
             loss_dict_super = model(images, targets, skip=skip_cfg_supernet) # if training 
             # super_net loss
             losses_super = loss_dict_super['classification'][0] + loss_dict_super['bbox_regression'][0]
+            out_cls_super = loss_dict_super['classification'][1]
+            out_bbox_super = loss_dict_super['bbox_regression'][1]
             losses_super = alpha * losses_super
             # print(f"losses_super : {losses_super}")
             # backward with super_net loss
             
             if not math.isfinite(losses_super):
                 print(f"losses_super is {losses_super}, stopping training")
+                print("Model Parameters:")
+                for param in model.parameters():
+                    print(param)
                 sys.exit(1)
             with torch.cuda.amp.autocast(enabled=False):
                 if scaler is not None:
@@ -258,26 +265,32 @@ def custom_train_one_epoch_twobackward(
             optimizer.zero_grad()
             loss_dict_base = model(images, targets, skip=skip_cfg_basenet) # if training 
             real_losses_base = loss_dict_base['classification'][0] + loss_dict_base['bbox_regression'][0]
-            # print(f"real_losses_base : {real_losses_base}")
-            # base_net loss (KL divergence)
-            out_cls_super = loss_dict_super['classification'][1]
-            out_bbox_super = loss_dict_super['bbox_regression'][1]
             out_cls_base = loss_dict_base['classification'][1]
             out_bbox_base = loss_dict_base['bbox_regression'][1]
+            # print(f"real_losses_base : {real_losses_base}")
             
+            # base_net loss (KL divergence)
             T = 4
-            # cls shape  : (bs, 190323, 91)
-            # bbox shape : (bs, 190323, 4)
+            # cls shape  : (bs, 190323, 91) -> (bs, 190323 * 91)
+            # bbox shape : (bs, 190323, 4)  -> (bs, 190323 * 4)
+            out_cls_base = out_cls_base.reshape(args.batch_size, -1)
+            out_bbox_base = out_bbox_base.reshape(args.batch_size, -1)
+            out_cls_super = out_cls_super.reshape(args.batch_size, -1)
+            out_bbox_super = out_bbox_super.reshape(args.batch_size, -1)            
+
             loss_cls_kd = criterion_kd(F.log_softmax(out_cls_base/T, dim=1), F.softmax(out_cls_super.clone().detach()/T, dim=1)) * T*T
             loss_bbox_kd = criterion_kd(F.log_softmax(out_bbox_base/T, dim=1), F.softmax(out_bbox_super.clone().detach()/T, dim=1)) * T*T
             # print(f"loss_cls_kd : {loss_cls_kd}")
             # print(f"loss_bbox_kd : {loss_bbox_kd}")
             kd_losses_base = loss_cls_kd + loss_bbox_kd
-            kd_losses_base = (1 - alpha) * kd_losses_base
+            kd_losses_base = (1. - alpha) * kd_losses_base
             # print(f"kd_losses_base : {kd_losses_base}")
             
             if not math.isfinite(kd_losses_base):
                 print(f"kd_losses_base is {kd_losses_base}, stopping training")
+                print("Model Parameters:")
+                for param in model.parameters():
+                    print(param)
                 sys.exit(1)
                 
             # backward with base_net loss

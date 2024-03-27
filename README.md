@@ -51,6 +51,10 @@
 
 - [ ] **`03_RetinaNet_with_ResNet50-ADN_backbone/`** :
 </br>Replace the backbone of RetinaNet in "01_PyTorch_RetinaNet/" with ResNet50-ADN (base-net) from "02_AdaptiveDepthNetwork/".
+  - log_only_super(equal to original ResNet50-FPN but with pretrained ADN weigths) : 
+  
+  - log_only_base : 
+  - log_super_base : 
 
 </br>
 

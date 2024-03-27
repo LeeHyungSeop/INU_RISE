@@ -24,7 +24,7 @@ import os,sys
 
 import presets
 import torch
-import torch.utils.data
+import torch.utils.data  
 import torchvision
 import utils
 from torch import nn
@@ -386,3 +386,4 @@ if __name__ == "__main__":
     --weights-backbone /home/hslee/Desktop/Embedded_AI/INU_4-1/RISE/02_AdaptiveDepthNetwork/pretrained/resnet50_adn_model_145.pth \
     2>&1 | tee ./logs/log_train_custom.txt
 '''
+
